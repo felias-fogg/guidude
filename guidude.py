@@ -29,7 +29,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GUIDude"
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.9.2"
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +390,177 @@ def danger_messages(model: PartModel, values: dict, old: dict):
 
 
 # ---------------------------------------------------------------------------
+# Look on Linux/BSD: Tk's "clam" theme recoloured like GNOME's Adwaita
+# ---------------------------------------------------------------------------
+
+# Checkbox indicators (16 px box + 6 px gap; 2x for HiDPI), PNG because Tk 8.6 has no
+# SVG. Rendered from SVG with Tk 9: rounded box, white tick on blue.
+_CHECK_PNG = {
+    ("off", 1): "iVBORw0KGgoAAAANSUhEUgAAABYAAAAQCAYAAAAS7Y8mAAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAAAmUlEQVR4nO2UTQrDIBSEvV970raLWIhm4UGaC5QQuusyqHkfmE3Bh4u6KR2Yld8M8vwxpmi0VxOcNdP9phoGtkluuACfJfSQcNYMA0tGlRdAfArevtflmVNKuSbWYGDJeK08uAHPr3WpFn4KlgzZ+o5lXuItxthcDEvGa7Muh9JceqjM/F/8k8Xdrlu/B9LrSaMun9Chb3+bO4QnMfY7beKqAAAAAElFTkSuQmCC",
+    ("off_hover", 1): "iVBORw0KGgoAAAANSUhEUgAAABYAAAAQCAYAAAAS7Y8mAAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAAAnklEQVR4nGNggAKjpgcMTj1PGUxbnuDFIDUgtUQBo8aHIMU+QE03gJr/48MgNSC1ID14gXHjYxD2du55+vnI7e////779x8XAMmB1IDUgvSA9OIEDl1PQfjmyXvfcRqIDkBqQXpAenEC05bHIPz71x/cLkUHILUgPSC9eAwGRwrRhsIANMxHDR6mBtMoudEsg9AsS4MATQohuOFULjYBTLAALm/NRQQAAAAASUVORK5CYII=",
+    ("on", 1): "iVBORw0KGgoAAAANSUhEUgAAABYAAAAQCAYAAAAS7Y8mAAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAABKElEQVR4nGNggAKN0ssMmmVXGLQIYJAakFqigEbJJZBiH6CmG0DN//FhkBqQWpAe/IYWXwJhb82yq58N6+/9N2l6/N+05QlWDJIDqQGpBekB6cUJNCHeu2lYfx+ngegYpBakB6QXt8GlV0D4t3HTI7yGOXQ9/V+48s1/zwnP/oPUgvSA9OIE0EjBa6h1+5P/Fx//+A8CRUDDQWLQMKfM4F1Xv4INffL+93/3/mekG+wz6fn/dWe//E9b+Apu6KJjn8CGfvz293/I9BdwcZIMjpnzEmzI919/wYZ3bHsP5v/68w/FMrKCYt25L3DDf//9B2bXrH+LETxkhTHMcBCYtv8j1nAnaDCu5Fa74e3/6nWYLgVhopIbzTIIzbI02HBaFEJww6lcbAIAwKhO6wl2/7MAAAAASUVORK5CYII=",
+    ("on_hover", 1): "iVBORw0KGgoAAAANSUhEUgAAABYAAAAQCAYAAAAS7Y8mAAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAABJ0lEQVR4nGNggAKN0ssM2uVXGLTK8GOQGpBaooBGySWQYh+gphtAzf/xYZAakFqQHvyGFl8CYW+d8mufHToe/vfse/7fa8ILrBgkB1IDUgvSA9KLE0C9eNOx4xFOA9ExSC1ID0gvTqBZegWEf3v0PcNrWPC0l/8bNr77HzP71X+QWpAekF5CLsZrqP/kF/+vPv35HwQaN74Hi0HDnDKDD978Djb0+Yc//6NmvSLd4Pi5r/5vu/T1f9mqt3BDV5/5Ajb00/e//9MWvoaLk2Rw7tI3YEO+//oHNnzK3o9g/q8//1AsIysotl/+Cjf8z99/YHbn9g8YwUNWGMMMB4GFRz9jDXeCBuNKbt07Pvzv3IbpUhAmJblRP4PQLEuDDadFIQQ3nMrFJgDxJ1/Nxbc7FgAAAABJRU5ErkJggg==",
+    ("off_dis", 1): "iVBORw0KGgoAAAANSUhEUgAAABYAAAAQCAYAAAAS7Y8mAAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAAAlElEQVR4nO2UOQ6AIBREuZ+e3h01HgCXQsHGAv8k0BhBCmmMk0zFm0lYPowZtVXOel6yvin8JgZskHiVAU4p1FBYe00MWGQeS8nJ0NbbPAqt5KZ3JW+NNTBgkfGWD7Q1Ml8m4Sy8GiwyyDrV1QV8KLkGF4NFBlmnzKUEl1qbM/+LP1kc7blFG5BoI23LX/+ErN7+Nk9/PVBWYl9gawAAAABJRU5ErkJggg==",
+    ("on_dis", 1): "iVBORw0KGgoAAAANSUhEUgAAABYAAAAQCAYAAAAS7Y8mAAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAABA0lEQVR4nLWU2w7BQBCGvR/PSUUkRCJx4Ya0JRoJLhzChcSF2Dq1oehh7CwrSHe16CR/0s3+881kurup1D1y6oopr5lScV+kyN7MGaoRTQaZ0IPe7Cc4GqjSimraikoAJYLyffRijhSeVwlqLAOGFcAczBWGohGU+wlcbK+hMdxDubO+dY05mgR8/ylSaEE3gVgXwGhS+NPeb+A5OTGo7XhQoh3HBleMDUyXDtQHu0fycHFk0LPrQ7W7eS8aDVzrbRnE9QIGN2Y2W3t+8FLsq1FgxxzuBwH71ieWaEzxZszhGP35QTZ/MVh03Fq0S30c3mm045bUBUnsSnP43x8hHv9+Nq8YaAQ3+HImHAAAAABJRU5ErkJggg==",
+    ("off", 2): "iVBORw0KGgoAAAANSUhEUgAAACwAAAAgCAYAAABpRpp6AAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAABPklEQVR4nO2YwUoDMRRF8wX6U/pbBf2VgtjUQirtjCs3Luy64MJli4zivi4nfWecSHGhkknEyLsQuppzD5nOMHnG/IdU47GpnDX1nDU1N9dXUYtrYcCCmSVLewH8SErOpayS0lcp9zGLa2HAggk7aSo3Mcu5PZWibazkF/Jb2HQkiZtNTO0uT0LB/d2tf2me/Ntu52PDtTBgfYhLB12DYq1lHcsubIA+Pqx927bRop8DC2a/0xu66IxO91A4OwK4kt1IKXsovep3mi4644XlaZa1AMYtzBXYnbB00TlUuAE25D/7XWD3ws0g4f692cFy5+DNocIqrMIqrMIqrMIqrMI/yvvpdvr8W5+XdNUJvocL+oAv7YhU3CGUFHXMDylqkBISRlVScJZqVAUry6gqhMFdGOSlGAbym20Y+NezB2GE0QpCOSERAAAAAElFTkSuQmCC",
+    ("off_hover", 2): "iVBORw0KGgoAAAANSUhEUgAAACwAAAAgCAYAAABpRpp6AAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAABPUlEQVR4nO2YTw4BMRjFewIuYWc53ICLuISVf8MNHMAlxA7HIBKRzohJrKxsxFTfaBGJkLYjKt9Lvsyqv/fSdpr2Y+wfVOqsWKUfs6AfZd/qYGtUjwwwc1G5uwa8IE1CaTaR3700FyaFsYoRggm2UwUhZ0GP14MwjkxDviowr2zuKGxrI5eO17RBY7QXs8VRJIeTMBXGggHWfdZ5DV52YZtrVFEuHQd0OD2INE2Ngz4LLDDVNuHwgqexKtmPEbX1zJ4dhtUCU880vOBpG3gM2Hx5dB5WC2wVeGwZOEbtALPZs+8EttoWO3gaS52bGSxvPZwcFJgCU2AKTIEpMAWmwBT4I6nrZfLF62Vidb308ALv2RPJu0doFtqnZ/4ttE+NFC3dqpIGPVetKrByaVVpoXEnTZw1A8HKrRn467oAZ2s/cj8VSVgAAAAASUVORK5CYII=",
+    ("on", 2): "iVBORw0KGgoAAAANSUhEUgAAACwAAAAgCAYAAABpRpp6AAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAACbUlEQVR4nGNgGA5AJfcEg2bpZQYNIAbRWmVXyMLIZoDMpAlQyz8LMpwPaEkT0LJtQPoV0PL/5GCQXqgZTSAzQWZTFWgUX2LQKLrkqll66RG5jsTt+EuPQGaD7KAKUM09z6BZcskFZoF2xbX/BnX3/hs1Pvxv2vKELAzSCzIDZBbc4UA7QHZRBJTSzoAwPzDqHoIM1au+/d+k+THZDkXHILNAZkKTyUOQXSA7yQYapZdAuA5koE7ltf8mTdRzLNzRQDNBZoPsANkFspNsoAnJyVtAhhnW36O6Y2EYZDY0lLeA7KTUwc9AhlGSZtGxfddTjDQNdfAzihwMLTfBhlHDoQUrXv+//OTn/19//v2v3fAWRQ6p5BgcDo6f9/L/91///sPA77///lu0DVIH+09+/v/dlz//kcHtl78GZwi79D77/+DNr//oYFAmCav2J//PPvyB4dgZBz5iqKW5g+uAIZS15PV/i1bcDt555SuGYzdf/IJVLU0dvPDYJ7gD7rz69d+t7xmGA+Yf/YTh2JP3vqNkNLo5GD2a0R3dsuUdhmNBmcyh+ynO2KCpg6fs+4DhoLtQR+cuew0uspDB609//vtMeo43vdPUwZbAaD148xuGo0GlwZcff1HEvv38+z969kuCGZTmmQ6Xo5EBKKTzl78mqkShS7FGyNEd294TXQTSrRwGOfrADUxHLwKWJKSU2XStOECO3n0N4ehNF7CXtTR3MLR5+ZzY5mX4zBdEZTB0jNS8fE6N9vDQacAPuS7SkOuEgsCQ6ubDwJAaSIEB+FBVyeVGqg1VAc2iyVAVDIAHA0uoOBhYQsPBwMEOAF8OlfrD6MdQAAAAAElFTkSuQmCC",
+    ("on_hover", 2): "iVBORw0KGgoAAAANSUhEUgAAACwAAAAgCAYAAABpRpp6AAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAACZ0lEQVR4nGNgGA5AJfcEg2bpZQYNIAbRWmVXyMLIZoDMpAlQyz8LMpwPaEkT0LJtQPoV0PL/5GCQXqgZTSAzQWZTFWgUX2LQKLrkqll66RG5jsTt+EuPQGaD7KAKUM09z6BZcskFZoFB9fX/9m0P/7v2PPnvNeEFWRikF2QGyCy4w4F2gOyiCCilnQFhfmDUPQQZatF4979n/3OyHYqOQWaBzIQmk4cgu0B2kg00Si+BcB0sZD37qOdYuKOBZsJCGmQXyE6ygSYkJ28BGWbf/pDqjoVhkNnQUN4CspNSBz8DGUZJmkXHwVNfYqRpqIOfUeRgaLkJNowaDq3f8O7/9ee//v/68+9/944PKHJIJcfgcHDB8jf/f/z+9x8G/vz999930iB1cOK8V/8/fP37Hxncf/1rcIZw+IyX/x+/+/0fHQzKJOE3+cX/S09+Yjh20bHPGGpp7uAeYAhVrX3332cibgcfuPEdw7G7r37DqpamDl59+gvcAQ/e/P4fOfMlhgNWnvqC4dhzD3+gZDS6ORg9mtEdPWH3RwzHgjJZyDRMj9HFwfOPfMJw0EOoo2vWvQMXWcjg7Zc//+PnvsKb3mnqYD9gtB6/i5k+nwBLg68/UYuv77/+/c9Z+oZgBqV5psPlaGQACuk6YO1GTIlCl2KNkKOn7P1IdBFIt3IY5OhjdzAdvfrMF5LKbLpWHCBHH7qFcPSuK9jLWpo7GNq8fE5s8zJz8WuiMhg6RmpePqdGe3joNOCHXBdpyHVCQWBIdfNhYEgNpMAAfKiq5HIj1YaqgGbRZKgKBsCDgSVUHAwsoeFg4GAHAIv52GMhxmYdAAAAAElFTkSuQmCC",
+    ("off_dis", 2): "iVBORw0KGgoAAAANSUhEUgAAACwAAAAgCAYAAABpRpp6AAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAABJUlEQVR4nO2YSwrCMBiEewK9lF5LsGcqnsFFpVIf1aiggi2+ELV1GzOSSBAESVMx8g/MsjMfSRqSeN4/iHW73iwZPD2fDI2sZyCzGtioh/CaKPGFO8I7Uc5NjG9lho9MZFvVdBR7bBw3WRKvTSHfGZnIRocVxf0IwA1VsFwwfthv+eV84rciNzK+RQayVC460FVKYRjCdTF1K4RmmzUv8qsx6KuRhUy5TFboQqexxFTBLTWyNmF1aDXS6EKnseSfHCDsKKbQNqwysuUoB+gsC5wirMya/WRNS+C0FLDcNx9hVcEqazsHARMwARMwARMwARMwAX8kebzMvni8zGych905wDt3RXLuEgo5dc1XcuohRUl7qmpbfKpqV/JU9YR26THw13UHTcIYucAdEskAAAAASUVORK5CYII=",
+    ("on_dis", 2): "iVBORw0KGgoAAAANSUhEUgAAACwAAAAgCAYAAABpRpp6AAAABHNCSVQICAgIfAhkiAAAABp0RVh0U29mdHdhcmUAVGsgVG9vbGtpdCB2OS4xLjCbMRbYAAACCUlEQVR4nN2Y607CMBiGdwV6U3pbJnoX/jPRyMF4SCQYgwkqTJFgPEVMiJhAiE4GjIGAjG2137A4N5lQWrP5Jl/4s73vs6796CoI/0Hr8YIQTstCWBxW5KxGVeR+8AJPLto4KoH5HA5ZwWFxXFUcjmgK7rU8sBd4gjdThVKSsJmSFnFImRbSA74M3pDBRGvJshBOSQu2gFHNAOnygAzImkmriSLUPDYu2YMYju7IDzIgCzKpFUpXoZZ4wP4EDVmQSS2rI6TlGDFmDWuHtn5xFmTSAw/bzzNr4O3MGGCcBZnUigz7JjPQ07yKai0N6YaJMoXWuOv8AZy4baKBbiIiwzRR9NynwLHLBuppBrJLeRv4c4R3s3WkdnXklC+nxBZ+5VVVc8HelTpe9/EBhhFK3qso6gFckt9dsE+vvd8elD3wQ6U7Amh2BmgPv3bnNXnbNUSS0h+30PgCO1+zEzr72HbBwiLbuXA/2J8A3+A56BSBPsbTBFqWXd2+gfZzjUnnPntgWEyVet8F3cLdQNO/w0LvPbxWplms7IG9oO2CkT7B/25Tdhc+wJNA54ptmnbID9gLGjoJBSx/YAJdrn313Al6LR/gz+3lCxhNsr08uFKmXWDI7g1ZM20vA7eBD9wnUuA+QkGB+swnCtRBCtHoqEqUl5kdVWEvLkdVRNZhoMjwMFDkeBjod30AMp//mIEUIcMAAAAASUVORK5CYII=",
+}
+
+ADW = dict(bg="#f6f5f4", fg="#2e3436", field="#ffffff", border="#cdc7c2",
+           button="#f9f8f8", hover="#ffffff", pressed="#dedad6", tab="#e8e6e3",
+           accent="#3584e4", accent_hover="#4a90e8", accent_pressed="#1c71d8",
+           accent_dis="#a9c6ec", disabled="#929595", trough="#e8e6e3",
+           thumb="#bdb8b3", thumb_hover="#9a9590")
+
+
+# tooltip colours; x11_look() switches to GNOME's dark tooltips
+TIP_LOOK = dict(background="#ffffe1", foreground="#000000", padx=6, pady=3,
+                borderwidth=1, relief="solid")
+
+
+def _desktop_font(key):
+    """("family", size) of a GNOME font setting, or None."""
+    try:
+        import subprocess
+        out = subprocess.run(["gsettings", "get", "org.gnome.desktop.interface", key],
+                             capture_output=True, text=True, timeout=2).stdout.strip()
+        family, size = out.strip("'").rsplit(" ", 1)
+        return family, int(float(size))
+    except Exception:
+        return None
+
+
+def x11_look(root, st):
+    """Adwaita-like colours, fonts and check boxes for the clam theme."""
+    import tkinter.font as tkfont
+    c = ADW
+    families = set(tkfont.families(root))
+    ui = _desktop_font("font-name")
+    if ui and ui[0] in families:
+        # GNOME's sizes are a bit large for this dense window; 10 pt max.
+        size = min(ui[1], 10)
+        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont",
+                     "TkCaptionFont", "TkIconFont"):
+            tkfont.nametofont(name).configure(family=ui[0], size=size)
+        tkfont.nametofont("TkTooltipFont").configure(family=ui[0], size=size - 1)
+        mono = _desktop_font("monospace-font-name")
+        if mono and mono[0] in families:
+            tkfont.nametofont("TkFixedFont").configure(family=mono[0], size=size)
+
+    st.configure(".", background=c["bg"], foreground=c["fg"], bordercolor=c["border"],
+                 lightcolor=c["bg"], darkcolor=c["bg"], troughcolor=c["trough"],
+                 fieldbackground=c["field"], selectbackground=c["accent"],
+                 selectforeground="#ffffff", insertcolor=c["fg"], focuscolor=c["accent"],
+                 arrowcolor=c["fg"])
+    st.map(".", foreground=[("disabled", c["disabled"])],
+           background=[("disabled", c["bg"])])
+    st.configure("TButton", background=c["button"], lightcolor=c["button"],
+                 darkcolor=c["button"], padding=(10, 4), anchor="center")
+    st.map("TButton",
+           background=[("disabled", c["bg"]), ("pressed", c["pressed"]),
+                       ("active", c["hover"])],
+           lightcolor=[("pressed", c["pressed"]), ("active", c["hover"])],
+           darkcolor=[("pressed", c["pressed"]), ("active", c["hover"])],
+           bordercolor=[("focus", c["accent"])])
+    st.configure("Accent.TButton", background=c["accent"], foreground="#ffffff",
+                 lightcolor=c["accent"], darkcolor=c["accent"], bordercolor=c["accent_pressed"])
+    st.map("Accent.TButton",
+           background=[("disabled", c["accent_dis"]), ("pressed", c["accent_pressed"]),
+                       ("active", c["accent_hover"])],
+           lightcolor=[("disabled", c["accent_dis"]), ("pressed", c["accent_pressed"]),
+                       ("active", c["accent_hover"])],
+           darkcolor=[("disabled", c["accent_dis"]), ("pressed", c["accent_pressed"]),
+                      ("active", c["accent_hover"])],
+           bordercolor=[("disabled", c["accent_dis"])],
+           foreground=[("disabled", "#ffffff")])
+    for w in ("TEntry", "TCombobox"):
+        st.configure(w, padding=(5, 3), lightcolor=c["field"], darkcolor=c["field"])
+        st.map(w, bordercolor=[("focus", c["accent"])],
+               lightcolor=[("focus", c["accent"])], darkcolor=[("focus", c["accent"])],
+               fieldbackground=[("readonly", c["field"]), ("disabled", c["bg"])],
+               # no text selection in read-only comboboxes (focus = blue frame;
+               # Tk 8.6 + Xft also drops the last selected glyph, "UPDI" -> "UPD")
+               selectbackground=[("readonly", c["field"])],
+               selectforeground=[("readonly", c["fg"])])
+    st.configure("TCombobox", arrowsize=13, background=c["field"])
+    st.map("TCombobox", background=[("active", c["hover"]), ("pressed", c["pressed"])])
+    st.configure("TNotebook", tabmargins=(2, 2, 2, 0))
+    st.configure("TNotebook.Tab", background=c["tab"], lightcolor=c["tab"],
+                 darkcolor=c["tab"], padding=(10, 3))
+    st.map("TNotebook.Tab",
+           background=[("selected", c["bg"]), ("active", "#efedeb")],
+           lightcolor=[("selected", c["bg"])], darkcolor=[("selected", c["bg"])],
+           expand=[("selected", (2, 2, 2, 0))])
+    st.configure("TProgressbar", background=c["accent"], lightcolor=c["accent"],
+                 darkcolor=c["accent"], bordercolor=c["border"], troughcolor=c["trough"])
+    # slim scroll bars without arrow buttons
+    for o, side in (("Vertical", "ns"), ("Horizontal", "ew")):
+        st.layout(f"{o}.TScrollbar", [(f"{o}.Scrollbar.trough", {"sticky": side, "children": [
+            (f"{o}.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]})])
+    st.configure("TScrollbar", background=c["thumb"], troughcolor=c["bg"],
+                 bordercolor=c["bg"], lightcolor=c["thumb"], darkcolor=c["thumb"],
+                 arrowsize=10, gripcount=0)
+    st.map("TScrollbar", background=[("pressed", c["thumb_hover"]), ("active", c["thumb_hover"])],
+           lightcolor=[("pressed", c["thumb_hover"]), ("active", c["thumb_hover"])],
+           darkcolor=[("pressed", c["thumb_hover"]), ("active", c["thumb_hover"])])
+
+    # check boxes with a tick instead of clam's cross
+    scale = 2 if float(root.tk.call("tk", "scaling")) >= 2.0 else 1
+    img = {k: tk.PhotoImage(master=root, data=d)
+           for (k, s), d in _CHECK_PNG.items() if s == scale}
+    root._check_images = img            # keep references
+    try:
+        st.element_create("Adw.Checkbutton.indicator", "image", img["off"],
+                          ("disabled", "selected", img["on_dis"]),
+                          ("disabled", img["off_dis"]),
+                          ("active", "selected", img["on_hover"]),
+                          ("selected", img["on"]),
+                          ("active", img["off_hover"]),
+                          sticky="w")
+        st.layout("TCheckbutton", [("Checkbutton.padding", {"sticky": "nswe", "children": [
+            ("Adw.Checkbutton.indicator", {"side": "left", "sticky": ""}),
+            ("Checkbutton.focus", {"side": "left", "sticky": "w", "children": [
+                ("Checkbutton.label", {"sticky": "nswe"})]})]})])
+    except tk.TclError:
+        pass                            # element exists (second App instance)
+    st.configure("TCheckbutton", indicatorbackground=c["field"])
+    st.map("TCheckbutton", background=[("active", c["bg"])])
+
+    TIP_LOOK.update(background="#353535", foreground="#ffffff", padx=8, pady=4,
+                    borderwidth=0, relief="flat")
+    # classic Tk widgets (log, hex view, combobox lists, menus, canvas)
+    root.adw_look = True                # menu bar: see App._build_menu
+    root.configure(background=c["bg"])
+    for pat, val in (("*Canvas.background", c["bg"]), ("*Text.background", c["field"]),
+                     ("*Text.foreground", c["fg"]), ("*Text.selectBackground", c["accent"]),
+                     ("*Text.selectForeground", "#ffffff"),
+                     ("*Text.inactiveSelectBackground", "#c4d9f5"),
+                     ("*TCombobox*Listbox.background", c["field"]),
+                     ("*TCombobox*Listbox.selectBackground", c["accent"]),
+                     ("*TCombobox*Listbox.selectForeground", "#ffffff"),
+                     ("*TCombobox*Listbox.borderWidth", 0),
+                     ("*Menu.background", c["field"]), ("*Menu.foreground", c["fg"]),
+                     ("*Menu.activeBackground", c["accent"]),
+                     ("*Menu.activeForeground", "#ffffff"),
+                     ("*Menu.disabledForeground", c["disabled"]),
+                     ("*Menu.relief", "flat"), ("*Menu.borderWidth", 1),
+                     ("*Menu.activeBorderWidth", 0), ("*Menu.selectColor", c["fg"])):
+        root.option_add(pat, val)
+
+
+def text_frame_opts():
+    """Border options for tk.Text (log, hex view) matching the theme."""
+    if sys.platform in ("darwin", "win32"):
+        return dict(borderwidth=1, relief="solid")
+    return dict(borderwidth=0, highlightthickness=1, highlightbackground=ADW["border"],
+                highlightcolor=ADW["accent"], padx=4, pady=2)
+
+
+# ---------------------------------------------------------------------------
 # Small widgets
 # ---------------------------------------------------------------------------
 
@@ -425,9 +596,7 @@ class Tooltip:
             return
         top = self.widget.winfo_toplevel()
         self.tip = tip = tk.Label(top, text=self.text, justify="left",
-                                  background="#ffffe1", foreground="#000000",
-                                  font="TkTooltipFont", wraplength=380,
-                                  padx=6, pady=3, borderwidth=1, relief="solid")
+                                  font="TkTooltipFont", wraplength=380, **TIP_LOOK)
         w, h = tip.winfo_reqwidth(), tip.winfo_reqheight()
         tw, th = top.winfo_width(), top.winfo_height()
         wx = self.widget.winfo_rootx() - top.winfo_rootx()
@@ -889,12 +1058,22 @@ class BitEditor(ttk.Frame):
             else:
                 changes.append(f"{t}:  0x{self._fmt(d, new)} (unchanged)")
         dangers = danger_messages(self.model, self.values, self.read_vals)
+        unread = [self.model.mems[d]["title"] for d in self.mems
+                  if self.read_vals.get(d) is None]
         msg = f"Program these values into {self.model.desc}?\n\n" + "\n".join(changes)
+        if unread:
+            # e.g. Arduino board: writing defaults + one change kills the bootloader
+            what = "fuse" if self.kind == "fuse" else "lock bit"
+            msg += (f"\n\n⚠ The current {what} values have not been read from the "
+                    "device. All bits will be overwritten with the values shown "
+                    "(including settings you did not change). Press “No” and then "
+                    f"“{self.btn_read.cget('text')}” to start from the device's values.")
         if dangers:
             msg += "\n\n⚠ WARNING:\n\n" + "\n\n".join("• " + x for x in dangers)
+        risky = bool(dangers or unread)
         if not messagebox.askyesno(APP_NAME, msg,
-                                   icon="warning" if dangers else "question",
-                                   default="no" if dangers else "yes"):
+                                   icon="warning" if risky else "question",
+                                   default="no" if risky else "yes"):
             return
 
         def job(pgm, p):
@@ -988,7 +1167,7 @@ class MemoryPanel(ttk.Frame):
             self.rowconfigure(4, weight=1)
             # compact dump format: 16 bytes + ASCII fit at minimum window width
             self.hex = tk.Text(hf, height=6, width=1, wrap="none", font=app.mono,
-                               state="disabled", borderwidth=1, relief="solid")
+                               state="disabled", **text_frame_opts())
             hsb = ttk.Scrollbar(hf, command=self.hex.yview)
             self.hex.configure(yscrollcommand=hsb.set)
             self.hex.pack(side="left", fill="both", expand=True)
@@ -1212,6 +1391,21 @@ class MemoryPanel(ttk.Frame):
 PORT_SEP = "  \u2014  "   # separates port and description in the port list
 SCAN_INTERVAL = 2.5 if os.name != "nt" else 6.0   # seconds between USB scans
 PGM_FILTERS = ("detected", "for device", "all")
+# Interface selector: label -> programming modes (names of ad.PM_* constants)
+IFACES = (("any", ()), ("UPDI", ("PM_UPDI",)), ("ISP", ("PM_ISP",)),
+          ("PDI", ("PM_PDI",)), ("TPI", ("PM_TPI",)),
+          ("JTAG", ("PM_JTAG", "PM_JTAGmkI", "PM_XMEGAJTAG")),
+          ("debugWIRE", ("PM_debugWIRE",)), ("HV", ("PM_HVSP", "PM_HVPP")),
+          ("Bootloader", ("PM_SPM",)))
+
+
+def iface_mask(label):
+    """Programming-mode bit mask of an interface label (all bits for "any")."""
+    names = dict(IFACES).get(label) or ()
+    m = 0
+    for n in names:
+        m |= getattr(ad, n, 0)
+    return m or ~0
 # preferred programming interface when several programmers fit
 PM_PRIORITY = ("PM_UPDI", "PM_ISP", "PM_PDI", "PM_TPI", "PM_JTAG", "PM_XMEGAJTAG",
                "PM_JTAGmkI", "PM_SPM", "PM_debugWIRE", "PM_HVSP", "PM_HVPP")
@@ -1322,6 +1516,8 @@ class App:
                 pass
         if sys.platform not in ("darwin", "win32") and "clam" in st.theme_names():
             st.theme_use("clam")
+            if os.environ.get("GUIDUDE_LOOK") != "clam":     # plain clam for comparison
+                x11_look(self.root, st)
         import tkinter.font as tkfont
         self.mono = tkfont.nametofont("TkFixedFont").copy()
         base = tkfont.nametofont("TkDefaultFont")
@@ -1347,15 +1543,29 @@ class App:
 
         ttk.Label(top, text="Device:").grid(row=0, column=0, sticky="w")
         df = ttk.Frame(top)
-        df.grid(row=0, column=1, columnspan=2, sticky="ew", padx=6)
-        self.dev_cb = FilterCombobox(df, on_select=self.device_selected, width=22)
+        df.grid(row=0, column=1, sticky="ew", padx=6)
+        self.dev_cb = FilterCombobox(df, on_select=self.device_selected, width=17)
         self.dev_cb.pack(side="left")
         Tooltip(self.dev_cb, "Type to search (name or avrdude id such as m328p)")
         self.btn_detect = ttk.Button(df, text="Detect", command=self.detect)
         self.btn_detect.pack(side="left", padx=6)
         Tooltip(self.btn_detect, "Read the signature and select the matching device")
-        self.sig_lbl = ttk.Label(df, text="", style="Sig.TLabel")
+        # fixed width ("1E 95 0F ✓"): the row must not grow after Detect
+        self.sig_lbl = ttk.Label(df, text="", style="Sig.TLabel", width=10)
         self.sig_lbl.pack(side="left", padx=(6, 0))
+        Tooltip(self.sig_lbl, "Signature of the selected device; after reading from the "
+                "device ✓ (matches) or ✗ (different device)")
+        ttk.Label(df, text="Interface:").pack(side="right", padx=(12, 0))
+        iface = self.settings.get("iface", "any")
+        self.iface_cb = ttk.Combobox(top, state="readonly", width=10,
+                                     values=[n for n, _ in IFACES])
+        self.iface_cb.set(iface if iface in dict(IFACES) else "any")
+        self.iface_cb.grid(row=0, column=2, sticky="w")
+        self.iface_cb.bind("<<ComboboxSelected>>", lambda e: self._iface_changed())
+        Tooltip(self.iface_cb,
+                "Programming interface: only devices and programmers that use it are\n"
+                "listed, and Detect stays within these devices.\n"
+                "any: no restriction")
 
         ttk.Label(top, text="Programmer:").grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.pgm_cb = FilterCombobox(top, on_select=self.programmer_selected, width=30)
@@ -1433,7 +1643,7 @@ class App:
         lf = ttk.Frame(logf)
         lf.pack(side="top", fill="both", expand=True)
         self.logtxt = tk.Text(lf, height=5, wrap="word", font=self.mono,
-                              state="disabled", borderwidth=1, relief="solid")
+                              state="disabled", **text_frame_opts())
         sb = ttk.Scrollbar(lf, command=self.logtxt.yview)
         self.logtxt.configure(yscrollcommand=sb.set)
         self.logtxt.pack(side="left", fill="both", expand=True)
@@ -1473,7 +1683,7 @@ class App:
             parts.append(p)
         self.parts = {p.desc: p for p in parts}
         self.part_ids = {p.id.lower(): p.desc for p in parts}
-        self.dev_cb.set_values(sorted(self.parts, key=str.lower))
+        self._fill_devices()
 
         self.pgms = {}
         for g in iter_list(ad.cvar.programmers, ad.ldata_programmer):
@@ -1490,10 +1700,87 @@ class App:
             self.pgms[label] = (ids[0], g.prog_modes, ids, g.conntype, g.usbvid, pids)
 
         dev = self.settings.get("device", "ATmega328P")
-        if dev not in self.parts:
-            dev = "ATmega328P" if "ATmega328P" in self.parts else next(iter(self.parts))
+        devs = self.dev_cb.all_values
+        if dev not in devs:
+            dev = "ATmega328P" if "ATmega328P" in devs else devs[0]
         self.dev_cb.set_committed(dev)
         self.device_selected(dev)
+
+    # -- interface ------------------------------------------------------------
+    def _mask(self):
+        return iface_mask(self.iface_cb.get())
+
+    def _pm(self):
+        """Programming modes in use: those of the device within the interface."""
+        pm = self.model.part.prog_modes
+        return pm & self._mask() or pm
+
+    def _fill_devices(self):
+        mask = self._mask()
+        devs = sorted((d for d, p in self.parts.items() if p.prog_modes & mask), key=str.lower)
+        self.dev_cb.set_values(devs or sorted(self.parts, key=str.lower))
+
+    def _used(self, kind, name):
+        """Most-recently-used lists of devices and programmers."""
+        lst = self.settings.setdefault(f"recent_{kind}s", [])
+        if name in lst:
+            lst.remove(name)
+        lst.insert(0, name)
+        del lst[20:]
+
+    def _recency(self, kind, name):
+        lst = self.settings.get(f"recent_{kind}s", [])
+        return lst.index(name) if name in lst else len(lst)
+
+    def _remember_iface(self):
+        """Device and programmer last used with the current interface."""
+        mem = self.settings.setdefault("iface_memory", {})
+        info = self.pgms.get(self.pgm_cb.get())
+        mem[self.iface_cb.get()] = {"device": self.dev_cb.get(),
+                                    "programmer": info[0] if info else None}
+
+    def _iface_changed(self):
+        old = self.settings.get("iface", "any")
+        new = self.iface_cb.get()
+        if new == old:
+            return
+        if self.model is not None:
+            self.iface_cb.set(old)
+            self._remember_iface()
+            self.iface_cb.set(new)
+        self.settings["iface"] = new
+        mask = self._mask()
+        mem = self.settings.get("iface_memory", {}).get(new, {})
+        self._fill_devices()
+        devs = self.dev_cb.all_values
+        cur = self.dev_cb.get()
+        if cur not in devs:
+            recent = [mem.get("device")] + self.settings.get("recent_devices", [])
+            dev = next((d for d in recent if d in devs), None) or \
+                ("ATmega328P" if "ATmega328P" in devs else devs[0])
+            self.dev_cb.set_committed(dev)
+            self.device_selected(dev)
+            self.log(f"Interface {new}: selected device {dev}", tag="notice")
+        else:
+            self._fill_programmers()
+            self._auto_select(f"Interface {new}")
+        info = self.pgms.get(self.pgm_cb.get())
+        if not info or not info[1] & mask:
+            # not covered by the detected hardware: the programmer used last time
+            # ... else the same tool in the new mode (atmelice_isp -> atmelice_updi)
+            want = mem.get("programmer")
+            base = info[0].split("_")[0] if info else None
+            vals = [k for k in self.pgm_cb.all_values if self.pgms[k][1] & mask]
+            lab = next((k for k in vals if self.pgms[k][0] == want), None) or \
+                min((k for k in vals if self.pgms[k][0].split("_")[0] == base),
+                    key=lambda k: len(self.pgms[k][0]), default=None) or \
+                next(iter(vals), None)
+            if lab:
+                self.pgm_cb.set_committed(lab)
+                self.programmer_selected(lab)
+                self.log(f"Interface {new}: selected programmer {self.pgms[lab][0]}",
+                         tag="notice")
+                self._fill_programmers()
 
     # -- programmer / port / connected hardware ---------------------------------
     def current_port(self):
@@ -1527,7 +1814,7 @@ class App:
         """label -> rank for programmers whose hardware is connected, narrowed
         by the port: usb:<sn> = that device, serial port = serial programmers
         and USB programmers of the device behind that port."""
-        pm = self.model.part.prog_modes
+        pm = self._pm()
         port = self.current_port()
         usb_sn = port[4:] if port.startswith("usb:") else None
         tty = port if port and not port.startswith("usb") else None
@@ -1549,11 +1836,12 @@ class App:
                         continue
                     if self._matches(info, d):
                         bridge = d.vid in UART_BRIDGE_VIDS and d.ports
-                        out[label] = (2 if bridge else 0, pm_rank(info[1] & pm), info[0])
+                        out[label] = (2 if bridge else 0, pm_rank(info[1] & pm),
+                                      self._recency("programmer", info[0]), info[0])
                         break
             elif info[3] == ad.CONNTYPE_SERIAL and have_tty and usb_sn is None:
                 r = spref.index(info[0]) if info[0] in spref else len(spref)
-                out[label] = (1, r, info[0])
+                out[label] = (1, r, self._recency("programmer", info[0]), info[0])
         return out
 
     def _fill_programmers(self):
@@ -1561,14 +1849,14 @@ class App:
             return
         mode = self.filter_cb.get()
         self.settings["pgm_filter"] = mode
-        pm = self.model.part.prog_modes
+        pm = self._pm()
         cur = self.pgm_cb.get()
         self._det = det = self._detected()
         if mode == "detected" and det:
             vals = sorted(det, key=det.get)
         else:
-            vals = sorted((k for k, v in self.pgms.items() if mode == "all" or v[1] & pm),
-                          key=str.lower)
+            mask = pm if mode != "all" else self._mask()
+            vals = sorted((k for k, v in self.pgms.items() if v[1] & mask), key=str.lower)
         if cur and cur not in vals:
             vals.append(cur)
         self.pgm_cb.set_values(vals)
@@ -1667,6 +1955,7 @@ class App:
             return next((k for k, v in self.pgms.items() if t in [i.lower() for i in v[2]]), None)
         info = self.pgms[text]
         self.settings["programmer"] = info[0]
+        self._used("programmer", info[0])
         port = self.current_port()
         if info[3] == ad.CONNTYPE_USB and not port.startswith("usb"):
             devs = [d for d in self.usb_devs if self._matches(info, d)]
@@ -1728,7 +2017,7 @@ class App:
         elif port and not port.startswith("usb") and any(port in d.ports for d in gone):
             self.port_cb.set("usb")            # its serial port is gone
         self._last_port = self.current_port()
-        pm = self.model.part.prog_modes
+        pm = self._pm()
         usable = [d for d in added if any(
             v[1] & pm and (self._matches(v, d) if self._is_tool(d)
                            else v[3] == ad.CONNTYPE_SERIAL and d.ports)
@@ -1750,10 +2039,12 @@ class App:
 
     def device_selected(self, text, probe=False):
         if probe:
-            return self.part_ids.get(text.lower())
+            d = self.part_ids.get(text.lower())
+            return d if d in self.dev_cb.all_values else None
         p = self.parts[text]
         self.model = PartModel(p)
         self.settings["device"] = text
+        self._used("device", text)
         self.fuses.set_model(self.model)
         self.locks.set_model(self.model)
         self.flash.set_model(self.model)
@@ -1768,7 +2059,7 @@ class App:
             self.nb.hide(self.userrow)
         if hasattr(self, "file_menu"):
             self._update_file_menu()
-        self.sig_lbl.configure(text="Sig " + p.signature.hex(" ").upper(), foreground="")
+        self.sig_lbl.configure(text=p.signature.hex(" ").upper(), foreground="")
         self._fill_programmers()
         if hasattr(self, "_scan_thread"):      # not during start-up
             self._auto_select(f"{text}")
@@ -1842,6 +2133,9 @@ class App:
         if ws != "aqua":
             # Linux / Windows: small menu bar inside the window
             mb = tk.Menu(r)
+            if getattr(r, "adw_look", False):
+                mb.configure(background=ADW["bg"], activebackground=ADW["tab"],
+                             activeforeground=ADW["fg"], borderwidth=0)
             fm = tk.Menu(mb, tearoff=0)
             self._fill_file_menu(fm, "Ctrl+O")
             fm.add_command(label="Quit", underline=0, accelerator="Ctrl+Q", command=self.quit)
@@ -2127,7 +2421,7 @@ class App:
             ad.cvar.quell_progress = q
         sig = m.get(3)
         ok = sig == self.model.part.signature
-        self.sig_lbl.configure(text="Sig " + sig.hex(" ").upper() + (" ✓" if ok else " ✗"),
+        self.sig_lbl.configure(text=sig.hex(" ").upper() + (" ✓" if ok else " ✗"),
                                foreground="#109030" if ok else "#d02020")
         return sig
 
@@ -2152,9 +2446,12 @@ class App:
             messagebox.showerror(APP_NAME, f"Unknown signature {sig.hex(' ').upper()}.")
 
     def _switch_device(self, desc):
+        if desc not in self.dev_cb.all_values:     # device of another interface
+            self.iface_cb.set("any")
+            self._iface_changed()
         self.dev_cb.set_committed(desc)
         self.device_selected(desc)
-        self.sig_lbl.configure(text="Sig " + self.parts[desc].signature.hex(" ").upper()
+        self.sig_lbl.configure(text=self.parts[desc].signature.hex(" ").upper()
                                + " ✓", foreground="#109030")
 
     def _updi_probe_parts(self):
@@ -2200,7 +2497,17 @@ class App:
             return
         lab = self.pgm_cb.get()
         pgm = ad.locate_programmer(ad.cvar.programmers, self.pgms[lab][0])
-        self._sig_mismatch(sig, pgm)
+        # Detect is meant to select the connected device: no question here
+        cand = None
+        if sig not in (b"\x00\x00\x00", b"\xff\xff\xff"):
+            pm = pgm.prog_modes & self._mask() or pgm.prog_modes
+            cand = ad.locate_part_by_signature_pm(ad.cvar.part_list, sig, pm) or \
+                ad.locate_part_by_signature(ad.cvar.part_list, sig)
+        if cand is not None and cand.desc in self.dev_cb.all_values:
+            self._switch_device(cand.desc)
+            self.log(f"Detected {cand.desc} (signature {sig.hex(' ').upper()})", tag="ok")
+        else:
+            self._sig_mismatch(sig, pgm)
 
     def erase_chip(self):
         if not messagebox.askyesno(APP_NAME, f"Erase the entire {self.model.desc}?\n\n"
