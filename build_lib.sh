@@ -6,7 +6,7 @@
 #   swig_avrdude.py                           - SWIG proxy module
 #   avrdude.conf                              - part and programmer database
 #
-# Usage: ./build_lib.sh [path/to/avrdude]     (default: ../avrdude)
+# Usage: [PYTHON=python3.x] ./build_lib.sh [path/to/avrdude]   (default: ../avrdude)
 #
 # Requirements: cmake, swig >= 4, Python 3 headers of the *same* Python
 # that will run GUIDude, plus the usual avrdude deps (libusb, hidapi,
@@ -23,8 +23,11 @@ if [ ! -f "$src/build.sh" ]; then
     exit 1
 fi
 
-echo "== Building avrdude in $src/build_$ostype"
-(cd "$src" && ./build.sh -j 8)
+# The SWIG module must be built for the same Python that runs GUIDude /
+# PyInstaller: use $PYTHON (default: python3 on the PATH).
+py=$(command -v "${PYTHON:-python3}")
+echo "== Building avrdude in $src/build_$ostype for $py"
+(cd "$src" && ./build.sh -j 8 -f "-D Python3_EXECUTABLE=$py")
 
 b="$src/build_$ostype/src"
 if [ ! -f "$b/swig_avrdude.py" ]; then

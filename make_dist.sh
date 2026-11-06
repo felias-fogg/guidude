@@ -5,9 +5,10 @@
 set -e
 cd "$(dirname "$0")"
 [ -f lib/swig_avrdude.py ] || ./build_lib.sh
+# same Python as the one the SWIG module was built for (see build_lib.sh)
 if [ ! -x .venv/bin/pyinstaller ]; then
-    python3 -m venv .venv
-    .venv/bin/pip install -q pyinstaller
+    "${PYTHON:-python3}" -m venv .venv
+    .venv/bin/pip install -q "pyinstaller${PYINSTALLER_VERSION:+==$PYINSTALLER_VERSION}"
 fi
 .venv/bin/pyinstaller --noconfirm guidude.spec
 if [ -d dist/GUIDude.app ]; then

@@ -9,10 +9,13 @@
 # `pathex`, so PyInstaller analyses it like any other import and also collects
 # the shared libraries it links against (libusb, hidapi, libftdi, ...).
 
+import re
 import sys
 from pathlib import Path
 
 here = Path(SPECPATH)
+# single source of truth for the version: APP_VERSION in guidude.py
+version = re.search(r'^APP_VERSION = "([^"]+)"', (here / "guidude.py").read_text(), re.M)[1]
 lib = here / "lib"
 if not (lib / "swig_avrdude.py").is_file():
     raise SystemExit("lib/swig_avrdude.py missing - run ./build_lib.sh first")
@@ -49,7 +52,8 @@ if sys.platform == "darwin":
         name="GUIDude.app",
         bundle_identifier="org.nongnu.avrdude.guidude",
         info_plist={
-            "CFBundleShortVersionString": "0.9",
+            "CFBundleShortVersionString": version,
+            "CFBundleVersion": version,
             "NSHighResolutionCapable": True,
         },
     )
