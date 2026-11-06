@@ -3,16 +3,17 @@ name: Release
 # Builds self-contained GUIDude packages with PyInstaller:
 #   macOS arm64   (Apple Silicon, macOS 11 Big Sur or later)
 #   macOS x86_64  (Intel, macOS 10.13 High Sierra or later)
-#   Linux x86_64  and  Linux aarch64  (glibc 2.31 or later: Debian 11,
-#                  Ubuntu 20.04, Raspberry Pi OS bullseye, Fedora 32, ...)
+#   Linux x86_64  and  Linux aarch64  (glibc 2.35 or later: Ubuntu 22.04,
+#                  Debian 12, Raspberry Pi OS bookworm, Fedora 36, ...)
 #
 #  - push of a tag v<APP_VERSION>  -> draft GitHub release with all packages
 #  - manual run (workflow_dispatch) -> build only, packages as workflow artifacts
 #
 # To run on old systems, the packages are built against old libraries:
 # on macOS the USB libraries are compiled with a low deployment target and
-# Python comes from python.org; on Linux everything is built in a Debian 11
-# container (an executable only runs with the glibc it was built with or newer).
+# Python comes from python.org; on Linux everything is built in an Ubuntu 22.04
+# container (an executable only runs with the glibc it was built with or newer;
+# 22.04 is the oldest still supported mainstream distro - Debian 11 is EOL).
 
 on:
   push:
@@ -127,8 +128,8 @@ jobs:
           - { runner: ubuntu-24.04,     arch: x86_64 }
           - { runner: ubuntu-24.04-arm, arch: aarch64 }
     runs-on: ${{ matrix.runner }}
-    # Debian 11: glibc 2.31, Python 3.9, Tk 8.6
-    container: debian:bullseye
+    # Ubuntu 22.04: glibc 2.35, Python 3.10, Tk 8.6
+    container: ubuntu:22.04
     env:
       PYTHON: python3
     steps:
@@ -207,8 +208,8 @@ jobs:
           |---|---|
           | `GUIDude-*-macOS-arm64.zip` | Mac with Apple Silicon, macOS 11 or later |
           | `GUIDude-*-macOS-x86_64.zip` | Mac with Intel processor, macOS 10.13 or later |
-          | `GUIDude-*-linux-x86_64.tar.gz` | Linux PC (glibc 2.31+: Debian 11, Ubuntu 20.04 or later) |
-          | `GUIDude-*-linux-aarch64.tar.gz` | 64-bit ARM Linux, e.g. Raspberry Pi OS 64-bit (bullseye or later) |
+          | `GUIDude-*-linux-x86_64.tar.gz` | Linux PC with glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or later) |
+          | `GUIDude-*-linux-aarch64.tar.gz` | 64-bit ARM Linux, e.g. Raspberry Pi OS 64-bit (bookworm or later) |
           EOF
           if ! gh release view "$GITHUB_REF_NAME" -R "$REPO" > /dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" -R "$REPO" --draft \
