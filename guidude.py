@@ -29,7 +29,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GUIDude"
-APP_VERSION = "0.9.2"
+APP_VERSION = "0.9.3"
 
 
 # ---------------------------------------------------------------------------
@@ -488,6 +488,18 @@ def x11_look(root, st):
                selectforeground=[("readonly", c["fg"])])
     st.configure("TCombobox", arrowsize=13, background=c["field"])
     st.map("TCombobox", background=[("active", c["hover"]), ("pressed", c["pressed"])])
+
+    # Tk 8.6 on X11 keeps the selection of a read-only combobox at the length
+    # of the previous value and then shows only that many characters
+    # ("JTAG" -> "Bootloader" shows "Boot"): select the whole new text.
+    def _reselect(e):
+        w = e.widget
+        try:
+            if str(w.cget("state")) == "readonly":
+                w.after_idle(lambda: w.winfo_exists() and w.selection_range(0, "end"))
+        except (tk.TclError, AttributeError):
+            pass
+    root.bind_all("<<ComboboxSelected>>", _reselect, add="+")
     st.configure("TNotebook", tabmargins=(2, 2, 2, 0))
     st.configure("TNotebook.Tab", background=c["tab"], lightcolor=c["tab"],
                  darkcolor=c["tab"], padding=(10, 3))
@@ -998,6 +1010,18 @@ class BitEditor(ttk.Frame):
         self.status.configure(text="Factory defaults loaded (not yet programmed).")
 
     # -- device actions -------------------------------------------------------
+    def _via_bootloader(self):
+        """True (after telling the user) if the selected programmer is a
+        bootloader: those cannot read or write fuses and lock bits (Optiboot
+        answers every fuse read with 0x00)."""
+        info = self.app.pgms.get(self.app.pgm_cb.get())
+        if not info or info[1] & ~ad.PM_SPM:
+            return False
+        what = "fuses" if self.kind == "fuse" else "lock bits"
+        messagebox.showinfo(APP_NAME, f"A bootloader ({info[0]}) cannot read or change "
+                            f"{what}.\n\nUse an ISP, UPDI, JTAG, ... programmer for this.")
+        return True
+
     def _read_mem(self, pgm, p, d):
         m = ad.avr_locate_mem(p, d)
         if ad.avr_read_mem(pgm, p, m) < 0:
@@ -1005,6 +1029,8 @@ class BitEditor(ttk.Frame):
         return int.from_bytes(m.get(m.size), "little")
 
     def read(self):
+        if self._via_bootloader():
+            return
         def job(pgm, p):
             vals = {d: self._read_mem(pgm, p, d) for d in self.mems}
             return vals
@@ -1019,6 +1045,8 @@ class BitEditor(ttk.Frame):
         self.status.configure(text=f"Values read from device at {time.strftime('%H:%M:%S')}.")
 
     def verify(self):
+        if self._via_bootloader():
+            return
         if any(self.values.get(d) is None for d in self.mems):
             messagebox.showwarning(APP_NAME, "Some values are empty.")
             return
@@ -1042,6 +1070,8 @@ class BitEditor(ttk.Frame):
             self.app.log("Verification OK - device matches the values shown.", tag="ok")
 
     def program(self):
+        if self._via_bootloader():
+            return
         if any(self.values.get(d) is None for d in self.mems):
             messagebox.showwarning(APP_NAME, "Some values are empty - read the device "
                                    "or load the factory defaults first.")
@@ -1557,7 +1587,7 @@ class App:
                 "device ✓ (matches) or ✗ (different device)")
         ttk.Label(df, text="Interface:").pack(side="right", padx=(12, 0))
         iface = self.settings.get("iface", "any")
-        self.iface_cb = ttk.Combobox(top, state="readonly", width=10,
+        self.iface_cb = ttk.Combobox(top, state="readonly", width=11,
                                      values=[n for n, _ in IFACES])
         self.iface_cb.set(iface if iface in dict(IFACES) else "any")
         self.iface_cb.grid(row=0, column=2, sticky="w")
@@ -1573,7 +1603,7 @@ class App:
         flt = self.settings.get("pgm_filter")
         if flt not in PGM_FILTERS:
             flt = "all" if self.settings.get("all_programmers") else "detected"
-        self.filter_cb = ttk.Combobox(top, state="readonly", width=10, values=PGM_FILTERS)
+        self.filter_cb = ttk.Combobox(top, state="readonly", width=11, values=PGM_FILTERS)
         self.filter_cb.set(flt)
         self.filter_cb.grid(row=1, column=2, sticky="w", pady=(6, 0))
         self.filter_cb.bind("<<ComboboxSelected>>", lambda e: self._filter_changed())
@@ -1751,6 +1781,12 @@ class App:
         self.settings["iface"] = new
         mask = self._mask()
         mem = self.settings.get("iface_memory", {}).get(new, {})
+        info = self.pgms.get(self.pgm_cb.get())
+        if not info or not info[1] & mask:
+            # the port belongs to the old programmer (e.g. usb:<sn> of a
+            # debugger): drop it so that all connected hardware counts again
+            self.port_cb.set("usb")
+            self._last_port = "usb"
         self._fill_devices()
         devs = self.dev_cb.all_values
         cur = self.dev_cb.get()
@@ -2357,6 +2393,13 @@ class App:
             pgm.setup()
             if pgm.open(port) < 0:
                 if pgm.conntype == ad.CONNTYPE_SERIAL and os.path.exists(port):
+                    if pgm.prog_modes & ad.PM_SPM:
+                        # bootloader protocols (arduino, urclock, avr109, ...)
+                        raise RuntimeError(
+                            f"no valid answer from the bootloader ({pid}) on {port}. "
+                            f"The board may have no bootloader or a different one "
+                            f"(try urclock), or a sketch that "
+                            f"blocks the reset is running")
                     raise RuntimeError(
                         f"no valid answer from {pid} on {port} - the port exists, so "
                         f"probably the programmer type does not match the hardware "
@@ -2375,9 +2418,15 @@ class App:
             pgm.enable(p)
             rc = pgm.initialize(p)
             if rc < 0:
+                hint = ""
+                if pgm.prog_modes & ad.PM_ISP and p.prog_modes & ad.PM_debugWIRE:
+                    hint += "; if debugWIRE is enabled (DWEN), ISP is off until " \
+                            "a debugWIRE tool switches it back"
+                if check_sig:       # not when detecting: that is what Detect does
+                    hint += "; or another device is connected: try Detect"
                 raise RuntimeError(f"initialization failed (rc={rc}) - check wiring, "
-                                   "target power and clock (try a larger bit clock), "
-                                   "or another device is connected: try Detect")
+                                   "target power and clock (try a larger bit clock)"
+                                   + hint)
             self.fail_stage = "job"
             if check_sig:
                 sig = self._read_sig(pgm, p)
