@@ -1,0 +1,210 @@
+# udev rules for GUIDude: give normal users access to the USB programmers
+# and debuggers avrdude supports. Generated from avrdude.conf by
+# linux/gen_udev_rules.py - do not edit by hand.
+#
+# To install, type these commands in a terminal:
+#   sudo cp 99-guidude.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+# then unplug and reconnect the programmer.
+#
+# Serial programmers (Arduino boards, STK500v2 clones, USB-serial adapters)
+# need no rule here; instead add yourself to the dialout group once:
+#   sudo usermod -aG dialout $USER     (then log out and in again)
+#
+# If you share your Linux system with other users and don't like world
+# write access, replace MODE="0666" by GROUP="plugdev", MODE="0660"
+# (or another group you are a member of).
+
+# --- USB programmers and debuggers ---
+# jtag2dw, jtag2fast, jtag2isp, jtag2pdi, jtag2slow, jtagmkII, ... (+1)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2103", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2103", MODE="0666"
+# avrispmkII
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2104", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2104", MODE="0666"
+# stk600, stk600hvsp, stk600pp
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2106", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2106", MODE="0666"
+# dragon_dw, dragon_hvsp, dragon_isp, dragon_jtag, dragon_pdi, dragon_pp
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2107", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2107", MODE="0666"
+# jtag3, jtag3dw, jtag3isp, jtag3pdi, jtag3updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2110", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2110", MODE="0666"
+# xplainedpro, xplainedpro_pdi, xplainedpro_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2111", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2111", MODE="0666"
+# jtag3, jtag3dw, jtag3isp, jtag3pdi, jtag3updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2140", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2140", MODE="0666"
+# atmelice, atmelice_dw, atmelice_isp, atmelice_pdi, atmelice_tpi, atmelice_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2141", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2141", MODE="0666"
+# powerdebugger, powerdebugger_dw, powerdebugger_isp, powerdebugger_pdi, powerdebugger_tpi, powerdebugger_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2144", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2144", MODE="0666"
+# xplainedmini, xplainedmini_dw, xplainedmini_tpi, xplainedmini_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2145", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2145", MODE="0666"
+# EDBG on Xplained Pro (mass storage mode)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2169", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2169", MODE="0666"
+# pkobn_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2175", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2175", MODE="0666"
+# pickit4, pickit4_dw, pickit4_isp, pickit4_pdi, pickit4_tpi, pickit4_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2177", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2177", MODE="0666"
+# pickit4, pickit4_dw, pickit4_isp, pickit4_pdi, pickit4_tpi, pickit4_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2178", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2178", MODE="0666"
+# pickit4, pickit4_dw, pickit4_isp, pickit4_pdi, pickit4_tpi, pickit4_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2179", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2179", MODE="0666"
+# snap, snap_dw, snap_isp, snap_pdi, snap_tpi, snap_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="217f", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="217f", MODE="0666"
+# snap, snap_dw, snap_isp, snap_pdi, snap_tpi, snap_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2180", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2180", MODE="0666"
+# snap, snap_dw, snap_isp, snap_pdi, snap_tpi, snap_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2181", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2181", MODE="0666"
+# nEDBG on Curiosity Nano (DFU mode)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fc0", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fc0", MODE="0666"
+# arduino-ft232r, bwmega, ft232r, ft245r, tc2030, ttl232r, ... (+1)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", MODE="0666"
+# 2232hio, avrftdi, avrisp-u, flyswatter2, ft2232h, ft2232h_jtag, ... (+1)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6010", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6010", MODE="0666"
+# 4232h, ft4232h
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6011", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6011", MODE="0666"
+# c232hm, digilent-hs2, ft232h, ft232h_jtag, um232h
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", MODE="0666"
+# tumpa, tumpa-b, tumpa_jtag
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="8a98", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="8a98", MODE="0666"
+# ktlink
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="bbe2", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="bbe2", MODE="0666"
+# lm3s811
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="bcd9", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="bcd9", MODE="0666"
+# jtagkey
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="cff8", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="cff8", MODE="0666"
+# pickit2
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="0033", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="0033", MODE="0666"
+# pickit4_mplab, pickit4_mplab_dw, pickit4_mplab_isp, pickit4_mplab_pdi, pickit4_mplab_tpi, pickit4_mplab_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9012", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9012", MODE="0666"
+# snap_mplab, snap_mplab_dw, snap_mplab_isp, snap_mplab_pdi, snap_mplab_tpi, snap_mplab_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9018", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9018", MODE="0666"
+# pickit5, pickit5_dw, pickit5_isp, pickit5_pdi, pickit5_tpi, pickit5_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9036", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9036", MODE="0666"
+# pickit_basic, pickit_basic_dw, pickit_basic_isp, pickit_basic_pdi, pickit_basic_tpi, pickit_basic_updi
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9055", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="04d8", ATTRS{idProduct}=="9055", MODE="0666"
+# iseavrprog
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="6570", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="6570", MODE="0666"
+# o-link, openmoko
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1457", ATTRS{idProduct}=="5118", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="1457", ATTRS{idProduct}=="5118", MODE="0666"
+# teensy
+SUBSYSTEM=="usb", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="0478", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="0478", MODE="0666"
+# usbasp, usbasp-clone
+SUBSYSTEM=="usb", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="05dc", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="05dc", MODE="0666"
+# nibobee
+SUBSYSTEM=="usb", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="092f", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="092f", MODE="0666"
+# micronucleus
+SUBSYSTEM=="usb", ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="0753", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="0753", MODE="0666"
+# ehajo-isp
+SUBSYSTEM=="usb", ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="0ba5", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="16d0", ATTRS{idProduct}=="0ba5", MODE="0666"
+# adafruit_gemma, usbtiny
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1781", ATTRS{idProduct}=="0c9f", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="1781", ATTRS{idProduct}=="0c9f", MODE="0666"
+# ch341a
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="5512", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="5512", MODE="0666"
+# arduinoisp
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0049", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0049", MODE="0666"
+# arduino_gemma
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0c9f", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0c9f", MODE="0666"
+# arduinoisporg
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2a03", ATTRS{idProduct}=="0049", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="2a03", ATTRS{idProduct}=="0049", MODE="0666"
+
+# --- DFU (FLIP) bootloaders of USB AVRs ---
+# ATxmega64C3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fd6", MODE="0666"
+# ATxmega128C3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fd7", MODE="0666"
+# ATxmega16C4
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fd8", MODE="0666"
+# ATxmega32C4
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fd9", MODE="0666"
+# ATxmega256C3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fda", MODE="0666"
+# ATxmega384C3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fdb", MODE="0666"
+# ATxmega128A4U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fde", MODE="0666"
+# ATxmega64B3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fdf", MODE="0666"
+# ATxmega128B3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe0", MODE="0666"
+# ATxmega64B1
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe1", MODE="0666"
+# ATxmega256A3BU
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe2", MODE="0666"
+# ATxmega16A4U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe3", MODE="0666"
+# ATxmega32A4U, ATxmega32C3
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe4", MODE="0666"
+# ATxmega64A3U, ATxmega64A4U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe5", MODE="0666"
+# ATxmega128A3U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe6", MODE="0666"
+# ATxmega192A3U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe7", MODE="0666"
+# ATxmega64A1U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fe8", MODE="0666"
+# ATxmega128B1
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fea", MODE="0666"
+# ATxmega256A3U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fec", MODE="0666"
+# ATxmega128A1U
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fed", MODE="0666"
+# ATmega8U2
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fee", MODE="0666"
+# ATmega16U2
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2fef", MODE="0666"
+# ATmega32U2
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff0", MODE="0666"
+# ATmega16U4
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff3", MODE="0666"
+# ATmega32U4
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff4", MODE="0666"
+# AT90USB82
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff7", MODE="0666"
+# AT90USB646, AT90USB647
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff9", MODE="0666"
+# AT90USB162
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ffa", MODE="0666"
+# AT90USB1286, AT90USB1287
+SUBSYSTEM=="usb", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ffb", MODE="0666"

@@ -1,0 +1,27 @@
+GUIDude for Linux
+=================
+
+Start:  ./GUIDude   (in this folder; the folder can be moved anywhere)
+
+Access to programmers
+---------------------
+Normal users are not allowed to access USB devices and serial ports
+by default. Do this once:
+
+1. USB programmers and debuggers (Atmel-ICE, MPLAB Snap/PICkit,
+   Curiosity Nano, USBasp, USBtinyISP, AVRISP mkII, ...):
+
+     sudo cp 99-guidude.rules /etc/udev/rules.d/
+     sudo udevadm control --reload-rules
+
+   Then unplug and reconnect the programmer.
+
+2. Serial programmers (Arduino boards, STK500v2-compatible ISP
+   programmers, USB-serial adapters):
+
+     sudo usermod -aG dialout $USER
+
+   Then log out and log in again.
+
+Requirements: 64-bit Linux with glibc 2.35 or later
+(Ubuntu 22.04, Debian 12, Raspberry Pi OS bookworm, Fedora 36 or newer).

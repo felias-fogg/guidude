@@ -931,29 +931,34 @@ FILETYPES = [("Intel Hex / S-Record / ELF / binary", "*.hex *.ihex *.eep *.srec 
 
 
 class MemoryPanel(ttk.Frame):
-    def __init__(self, master, app, memname):
-        super().__init__(master, padding=10)
-        self.app, self.memname = app, memname
-        self.columnconfigure(1, weight=1)
-        title = "Flash" if memname == "flash" else "EEPROM"
+    """File based programming of one memory (flash, EEPROM, user row).
 
-        ttk.Label(self, text=f"{title} file:").grid(row=0, column=0, sticky="w")
-        self.file = ttk.Combobox(self, values=app.settings.get(f"recent_{memname}", []))
+    ``key`` names the memory for settings and is the preferred avrdude memory
+    name; ``alt`` are further names to try (e.g. "usersig" on XMEGA). Small
+    memories get a hex view with a plain "Read" button."""
+
+    def __init__(self, master, app, key, title, alt=(), hexview=False):
+        super().__init__(master, padding=10)
+        self.app, self.key, self.names = app, key, (key,) + tuple(alt)
+        self.memname, self.title, self.available = key, title, True
+        self.columnconfigure(1, weight=1)
+
+        self.file_lbl = ttk.Label(self, text=f"{title} file:")
+        self.file_lbl.grid(row=0, column=0, sticky="w")
+        recent = app.settings.get(f"recent_{key}", [])
+        self.file = ttk.Combobox(self, values=recent)
         self.file.grid(row=0, column=1, sticky="ew", padx=6)
-        last = app.settings.get(f"recent_{memname}", [])
-        if last:
-            self.file.set(last[0])
-        bb_browse = ttk.Button(self, text="Browse…", command=self.browse)
+        if recent:
+            self.file.set(recent[0])
+        bb_browse = ttk.Button(self, text="Browse\u2026", command=self.browse)
         bb_browse.grid(row=0, column=2)
-        Tooltip(bb_browse, f"Choose an existing file to program or verify.\n"
-                f"To save the device contents to a (new) file use "
-                f"\u201cRead {title} to File\u2026\u201d.")
+        self.browse_tip = Tooltip(bb_browse, "")
 
         opts = ttk.Frame(self)
         opts.grid(row=1, column=1, sticky="w", padx=6, pady=(8, 0))
-        self.erase = tk.BooleanVar(value=app.settings.get(f"{memname}_erase", True))
-        self.verify_after = tk.BooleanVar(value=app.settings.get(f"{memname}_verify", True))
-        if memname == "flash":
+        self.erase = tk.BooleanVar(value=app.settings.get(f"{key}_erase", True))
+        self.verify_after = tk.BooleanVar(value=app.settings.get(f"{key}_verify", True))
+        if key == "flash":
             ttk.Checkbutton(opts, text="Erase chip before programming",
                             variable=self.erase).pack(anchor="w")
         ttk.Checkbutton(opts, text="Verify after programming",
@@ -964,25 +969,87 @@ class MemoryPanel(ttk.Frame):
 
         bb = ttk.Frame(self)
         bb.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(18, 0))
-        b_read = ttk.Button(bb, text=f"Read {title} to File…", command=self.read_to_file)
+        self.b_read = ttk.Button(bb, command=self.read_to_file)
         b_ver = ttk.Button(bb, text="Verify", command=self.verify)
-        b_prog = ttk.Button(bb, text=f"Program {title}", command=self.program,
-                            style="Accent.TButton")
-        b_prog.pack(side="right")
+        self.b_prog = ttk.Button(bb, command=self.program, style="Accent.TButton")
+        self.b_prog.pack(side="right")
         b_ver.pack(side="right", padx=6)
-        b_read.pack(side="left")
-        Tooltip(b_read, f"Read the {title} contents from the device and save them to a new "
-                f"or existing file (Intel Hex, S-Record or raw binary, by extension). "
-                f"The file in the field above is suggested.")
-        app.action_buttons += [b_read, b_ver, b_prog]
+        self.read_tip = Tooltip(self.b_read, "")
+        app.action_buttons += [self.b_read, b_ver, self.b_prog]
+
+        self.hex = None
+        if hexview:
+            b_show = ttk.Button(bb, text="Read", command=self.read_to_view)
+            b_show.pack(side="left", padx=(0, 6))
+            Tooltip(b_show, "Read the contents from the device and show them below")
+            app.action_buttons.append(b_show)
+            hf = ttk.Frame(self)
+            hf.grid(row=4, column=0, columnspan=3, sticky="nsew", pady=(12, 0))
+            self.rowconfigure(4, weight=1)
+            # compact dump format: 16 bytes + ASCII fit at minimum window width
+            self.hex = tk.Text(hf, height=6, width=1, wrap="none", font=app.mono,
+                               state="disabled", borderwidth=1, relief="solid")
+            hsb = ttk.Scrollbar(hf, command=self.hex.yview)
+            self.hex.configure(yscrollcommand=hsb.set)
+            self.hex.pack(side="left", fill="both", expand=True)
+            hsb.pack(side="right", fill="y")
+        self.b_read.pack(side="left")
+        self._set_title(title)
+
+    def _set_title(self, title):
+        self.title = title
+        self.file_lbl.configure(text=f"{title} file:")
+        self.b_read.configure(text=f"Read {title} to File\u2026")
+        self.b_prog.configure(text=f"Program {title}")
+        self.browse_tip.text = (f"Choose an existing file to program or verify.\n"
+                                f"To save the device contents to a (new) file use "
+                                f"\u201cRead {title} to File\u2026\u201d.")
+        self.read_tip.text = (f"Read the {title} contents from the device and save them "
+                              f"to a new or existing file (Intel Hex, S-Record or raw "
+                              f"binary, by extension). The file in the field above is "
+                              f"suggested.")
 
     def set_model(self, model):
-        m = ad.avr_locate_mem(model.part, self.memname)
+        m = next((m for m in (ad.avr_locate_mem(model.part, n) for n in self.names) if m), None)
+        self.available = m is not None
         if m is None:
-            self.info.configure(text=f"{model.desc} has no {self.memname} memory.")
-        else:
-            self.info.configure(text=f"{model.desc}: {m.size} bytes {self.memname}"
-                                + (f", page size {m.page_size}" if m.page_size > 1 else ""))
+            if self.key == "userrow":
+                self._set_title("User Row")
+            self.info.configure(text=f"{model.desc} has no {self.key} memory.")
+            return
+        self.memname = m.desc
+        if self.key == "userrow":       # UPDI: user row; XMEGA, RFR2: user signature
+            self._set_title("User Row" if m.desc == "userrow" else "User Signature")
+        self.info.configure(text=f"{model.desc}: {m.size} bytes {self.memname}"
+                            + (f", page size {m.page_size}" if m.page_size > 1 else ""))
+        self._show(None)
+
+    def _show(self, data):
+        if self.hex is None:
+            return
+        lines = []
+        if data is not None:
+            for o in range(0, len(data), 16):
+                row = data[o:o + 16]
+                hx = " ".join(f"{b:02X}" for b in row)
+                asc = "".join(chr(b) if 32 <= b < 127 else "." for b in row)
+                lines.append(f"{o:04X} {hx:<47} {asc}")
+        self.hex.configure(state="normal")
+        self.hex.delete("1.0", "end")
+        self.hex.insert("1.0", "\n".join(lines) if lines else
+                        "(press \u201cRead\u201d to show the device contents)")
+        self.hex.configure(state="disabled")
+
+    def read_to_view(self):
+        def job(pgm, p):
+            m = ad.avr_locate_mem(p, self.memname)
+            if ad.avr_read_mem(pgm, p, m) < 0:
+                raise RuntimeError(f"failed to read {self.memname}")
+            return m.get(m.size)
+        data = self.app.session(job, f"Reading {self.memname}")
+        if data is not None:
+            self._show(data)
+            self.app.log(f"Read {len(data)} bytes of {self.memname}", tag="ok")
 
     def browse(self):
         cur = self.file.get()
@@ -994,8 +1061,8 @@ class MemoryPanel(ttk.Frame):
             self._remember(f)
 
     def _remember(self, f):
-        lst = [f] + [x for x in self.app.settings.get(f"recent_{self.memname}", []) if x != f]
-        self.app.settings[f"recent_{self.memname}"] = lst[:10]
+        lst = [f] + [x for x in self.app.settings.get(f"recent_{self.key}", []) if x != f]
+        self.app.settings[f"recent_{self.key}"] = lst[:10]
         self.file["values"] = lst[:10]
 
     def _check_file(self):
@@ -1101,7 +1168,7 @@ class MemoryPanel(ttk.Frame):
         # Suggest the file from the field (same folder and name); the save
         # dialog lets the user keep it (confirming the overwrite) or type a new name
         cur = self.file.get().strip()
-        ext = ".hex" if self.memname == "flash" else ".eep"
+        ext = ".eep" if self.key == "eeprom" else ".hex"
         init = os.path.dirname(cur) if cur else None
         name = os.path.basename(cur) if cur else f"{self.app.model.part.id}_{self.memname}{ext}"
         f = filedialog.asksaveasfilename(
@@ -1125,10 +1192,13 @@ class MemoryPanel(ttk.Frame):
                 n = m.size if fmt == ad.FMT_RBIN else 0
             if ad.fileio(ad.FIO_WRITE, f, fmt, p, self.memname, n) < 0:
                 raise RuntimeError(f"cannot write {f}")
-            return n
-        n = self.app.session(job, f"Reading {self.memname}")
-        if n is None:
+            return n, (m.get(m.size) if self.hex is not None else None)
+        res = self.app.session(job, f"Reading {self.memname}")
+        if res is None:
             return
+        n, data = res
+        if data is not None:
+            self._show(data)
         self.app.log(f"Saved {n} bytes of {self.memname} to {f}"
                      + (" (memory empty)" if n == 0 else ""), tag="ok")
         self.file.set(f)                # now ready for Verify / Program
@@ -1337,12 +1407,15 @@ class App:
         self.nb.pack(fill="both", expand=True)
         self.fuses = BitEditor(self.nb, self, "fuse")
         self.locks = BitEditor(self.nb, self, "lock")
-        self.flash = MemoryPanel(self.nb, self, "flash")
-        self.eeprom = MemoryPanel(self.nb, self, "eeprom")
+        self.flash = MemoryPanel(self.nb, self, "flash", "Flash")
+        self.eeprom = MemoryPanel(self.nb, self, "eeprom", "EEPROM")
+        self.userrow = MemoryPanel(self.nb, self, "userrow", "User Row", alt=("usersig",),
+                                   hexview=True)
         self.nb.add(self.fuses, text="Fuses")
         self.nb.add(self.locks, text="Lock Bits")
         self.nb.add(self.flash, text="Flash")
         self.nb.add(self.eeprom, text="EEPROM")
+        self.nb.add(self.userrow, text="User Row")
         self.nb.select(self.settings.get("tab", 0))
         pw.add(nbf, stretch="always")
 
@@ -1685,6 +1758,16 @@ class App:
         self.locks.set_model(self.model)
         self.flash.set_model(self.model)
         self.eeprom.set_model(self.model)
+        self.userrow.set_model(self.model)
+        # the user row tab only for parts that have one
+        if self.userrow.available:
+            self.nb.add(self.userrow, text=self.userrow.title)
+        else:
+            if self.nb.select() == str(self.userrow):
+                self.nb.select(self.fuses)
+            self.nb.hide(self.userrow)
+        if hasattr(self, "file_menu"):
+            self._update_file_menu()
         self.sig_lbl.configure(text="Sig " + p.signature.hex(" ").upper(), foreground="")
         self._fill_programmers()
         if hasattr(self, "_scan_thread"):      # not during start-up
@@ -1739,7 +1822,11 @@ class App:
                     "debug" if level >= ad.MSG_DEBUG else None
         t = self.logtxt
         t.configure(state="normal")
-        t.insert("end", text + ("\n" if nl and not text.endswith("\n") else ""),
+        # complete lines start on a new line, even if the last libavrdude
+        # message lacked its "\n"
+        if nl and t.get("end-2c") not in ("\n", ""):
+            text = "\n" + text
+        t.insert("end", text +("\n" if nl and not text.endswith("\n") else ""),
                  (tag,) if tag else ())
         t.see("end")
         t.configure(state="disabled")
@@ -1749,19 +1836,34 @@ class App:
 
     # -- menu bar (macOS only: there it is global and Tk's default one has
     #    "Source...", "Run Widget Demo" etc.) ----------------------------------
-    def _build_menu(self):
-        if self.root.tk.call("tk", "windowingsystem") != "aqua":
-            return
+    def _build_menu(self, ws=None):
         r = self.root
+        ws = ws or r.tk.call("tk", "windowingsystem")
+        if ws != "aqua":
+            # Linux / Windows: small menu bar inside the window
+            mb = tk.Menu(r)
+            fm = tk.Menu(mb, tearoff=0)
+            self._fill_file_menu(fm, "Ctrl+O")
+            fm.add_command(label="Quit", underline=0, accelerator="Ctrl+Q", command=self.quit)
+            mb.add_cascade(label="File", underline=0, menu=fm)
+            hm = tk.Menu(mb, tearoff=0)
+            hm.add_command(label="AVRDUDE Manual", underline=0, accelerator="F1",
+                           command=self.show_manual)
+            hm.add_separator()
+            hm.add_command(label=f"About {APP_NAME}", underline=0, command=self.about)
+            mb.add_cascade(label="Help", underline=0, menu=hm)
+            r.configure(menu=mb)
+            # accelerators are only labels on X11/Windows: bind the keys
+            r.bind_all("<Control-o>", lambda e: (self._open_flash(), "break")[1])
+            r.bind_all("<Control-q>", lambda e: (self.quit(), "break")[1])
+            r.bind_all("<F1>", lambda e: (self.show_manual(), "break")[1])
+            return
         mb = tk.Menu(r)
         app = tk.Menu(mb, name="apple")
         app.add_command(label=f"About {APP_NAME}", command=self.about)
         mb.add_cascade(menu=app)
         fm = tk.Menu(mb)
-        fm.add_command(label="Open Flash File\u2026", accelerator="Command-O",
-                       command=self._open_flash)
-        fm.add_command(label="Save Log\u2026", command=self.save_log)
-        fm.add_separator()
+        self._fill_file_menu(fm, "Command-O")
         fm.add_command(label="Close", accelerator="Command-W", command=self.quit)
         mb.add_cascade(label="File", menu=fm)
         # macOS adds AutoFill to any menu titled Edit; Dictation and Emoji
@@ -1784,10 +1886,41 @@ class App:
         # GIL is released"). So the hooks are plain Tcl procs that only queue
         # the Python callback for the event loop.
         r.createcommand("guidude_quit", self.quit)              # Cmd-Q saves settings
-        r.createcommand("guidude_help", lambda: webbrowser.open(
-            "https://avrdudes.github.io/avrdude/"))
+        r.createcommand("guidude_help", self.show_manual)
         r.tk.eval("proc ::tk::mac::Quit {} {after idle guidude_quit}")
         r.tk.eval("proc ::tk::mac::ShowHelp {} {after idle guidude_help}")
+        # On macOS a menu accelerator only flashes the menu; the action needs a
+        # key binding (Cut/Copy/Paste/Select All are bound by Tk itself)
+        r.bind_all("<Command-o>", lambda e: (self._open_flash(), "break")[1])
+        r.bind_all("<Command-w>", lambda e: (self.quit(), "break")[1])
+
+    def _fill_file_menu(self, fm, open_accel):
+        """Open/read entries for flash, EEPROM and user row, then Save Log."""
+        self.file_menu, self._ur_entries = fm, []
+        panels = (self.flash, self.eeprom, self.userrow)
+        for p in panels:
+            fm.add_command(label=f"Open {p.title} File\u2026",
+                           accelerator=open_accel if p is self.flash else "",
+                           command=lambda p=p: (self.nb.select(p), p.browse()))
+            if p is self.userrow:
+                self._ur_entries.append((fm.index("end"), "Open {} File\u2026"))
+        fm.add_separator()
+        for p in panels:
+            fm.add_command(label=f"Read {p.title} to File\u2026",
+                           command=lambda p=p: (self.nb.select(p), p.read_to_file()))
+            if p is self.userrow:
+                self._ur_entries.append((fm.index("end"), "Read {} to File\u2026"))
+        fm.add_separator()
+        fm.add_command(label="Save Log\u2026", command=self.save_log)
+        fm.add_separator()
+
+    def _update_file_menu(self):
+        st = "normal" if self.userrow.available else "disabled"
+        for idx, fmt in self._ur_entries:
+            self.file_menu.entryconfigure(idx, label=fmt.format(self.userrow.title), state=st)
+
+    def show_manual(self):
+        webbrowser.open("https://avrdudes.github.io/avrdude/")
 
     def _callback_error(self, exc, val, tb):
         text = "".join(traceback.format_exception(exc, val, tb))
@@ -2094,6 +2227,7 @@ class App:
         self.settings["flash_erase"] = self.flash.erase.get()
         self.settings["flash_verify"] = self.flash.verify_after.get()
         self.settings["eeprom_verify"] = self.eeprom.verify_after.get()
+        self.settings["userrow_verify"] = self.userrow.verify_after.get()
         try:
             self.sp.parent.mkdir(parents=True, exist_ok=True)
             self.sp.write_text(json.dumps(self.settings, indent=2))
@@ -2177,7 +2311,8 @@ def main():
     if "--selftest" in sys.argv:
         sys.exit(selftest())
     _mac_hide_menu_extras()
-    root = tk.Tk()
+    # className: WM_CLASS on X11 (taskbar grouping, window lookup)
+    root = tk.Tk(className="GUIDude")
     App(root)
     root.mainloop()
 
