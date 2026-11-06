@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 # same Python as the one the SWIG module was built for (see build_lib.sh)
 if [ ! -x .venv/bin/pyinstaller ]; then
     "${PYTHON:-python3}" -m venv .venv
+    .venv/bin/pip install -q --upgrade pip      # old distro pips are too old
     .venv/bin/pip install -q "pyinstaller${PYINSTALLER_VERSION:+==$PYINSTALLER_VERSION}"
 fi
 .venv/bin/pyinstaller --noconfirm guidude.spec
