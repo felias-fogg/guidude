@@ -1,0 +1,3 @@
+# Patches must keep their LF line endings: the avrdude and libusb sources they
+# apply to use LF on every system (git on Windows would otherwise convert them)
+*.patch -text

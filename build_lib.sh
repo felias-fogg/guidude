@@ -54,14 +54,19 @@ fi
 # Each patch is applied unless the source already contains it.
 for p in "$here"/avrdude-patches/*.patch; do
     [ -f "$p" ] || continue
-    if git -C "$src" apply --reverse --check "$p" 2>/dev/null; then
+    # avrdude's sources use LF everywhere: drop CRs a Windows checkout of the
+    # patches may have added (.gitattributes should prevent that)
+    lf() { tr -d '\r' < "$p"; }
+    if lf | git -C "$src" apply --reverse --check - 2>/dev/null; then
         echo "== Already in avrdude source: $(basename "$p")"
-    elif git -C "$src" apply --check "$p" 2>/dev/null; then
-        git -C "$src" apply "$p"
+    elif lf | git -C "$src" apply --check - 2>/dev/null; then
+        lf | git -C "$src" apply -
         echo "== Applied to avrdude source: $(basename "$p")"
     else
         echo "== WARNING: $(basename "$p") does not apply to $src - check whether" \
              "this avrdude has an equivalent fix" >&2
+        # release builds must not silently go without a fix
+        if [ "$CI" = true ]; then exit 1; fi
     fi
 done
 
@@ -100,7 +105,8 @@ if [ "$ostype" = windows ] && ls "$here"/avrdude-patches/libusb/*.patch > /dev/n
     git -c core.autocrlf=false clone -q https://github.com/avrdudes/libusb.git "$lsrc"
     git -C "$lsrc" checkout -q "${tag:-HEAD}"
     for p in "$here"/avrdude-patches/libusb/*.patch; do
-        git -C "$lsrc" apply "$(cygpath -m "$p")"
+        # the checkout may have given the patch CRLF line endings (autocrlf)
+        tr -d '\r' < "$p" | git -C "$lsrc" apply -
         echo "== Applied to libusb-win32 (${tag:-HEAD}): $(basename "$p")"
     done
     set -- "$@" -D "FETCHCONTENT_SOURCE_DIR_LIBUSB=$lsrc"
