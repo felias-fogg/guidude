@@ -2389,6 +2389,10 @@ class App:
         r.createcommand("guidude_help", self.show_manual)
         r.tk.eval("proc ::tk::mac::Quit {} {after idle guidude_quit}")
         r.tk.eval("proc ::tk::mac::ShowHelp {} {after idle guidude_help}")
+        # Click on the Dock icon while GUIDude is the active app ("reopen"):
+        # restore the minimized window (without this hook nothing happens)
+        r.tk.eval("proc ::tk::mac::ReopenApplication {} "
+                  "{after idle {if {[wm state .] eq {iconic}} {wm deiconify .}; raise .}}")
         # On macOS a menu accelerator only flashes the menu; the action needs a
         # key binding (Cut/Copy/Paste/Select All are bound by Tk itself)
         r.bind_all("<Command-o>", lambda e: (self._open_flash(), "break")[1])
