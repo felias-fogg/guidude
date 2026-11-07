@@ -1,6 +1,6 @@
 # GUIDude: A lightweight GUI for avrdude
 
-GUIDude is a lightweight graphical user interface for avrdude written in Python and making use of the libavrdude library. You can read and set all fuses and lock bits of an AVR MCU. In addition, you can program flash and EEPROM and dump the contents of these memories. 
+GUIDude is a lightweight graphical user interface for [avrdude](https://github.com/avrdudes/avrdude) written in Python and making use of the l*ibavrdude* library. You can read and set all fuses and lock bits of an AVR MCU. In addition, you can program flash and EEPROM and dump the contents of these memories. 
 
 ## Installation of pre-built binaries
 
