@@ -29,7 +29,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GUIDude"
-APP_VERSION = "0.10.0"
+APP_VERSION = "0.10.1"
 
 
 # ---------------------------------------------------------------------------
@@ -597,10 +597,19 @@ def x11_look(root, st):
         root.option_add(pat, val)
 
 
+FRAME_GREY = "#c4c4c4"      # thin frames on macOS/Windows (lighter than a solid border)
+
+
+def frame_border_opts():
+    """A thin light frame for a tk.Frame around a pane (fuse list)."""
+    c = FRAME_GREY if sys.platform in ("darwin", "win32") else ADW["border"]
+    return dict(borderwidth=0, highlightthickness=1, highlightbackground=c, highlightcolor=c)
+
+
 def text_frame_opts():
     """Border options for tk.Text (log, hex view) matching the theme."""
     if sys.platform in ("darwin", "win32"):
-        return dict(borderwidth=1, relief="solid")
+        return dict(frame_border_opts(), padx=3, pady=1)
     return dict(borderwidth=0, highlightthickness=1, highlightbackground=ADW["border"],
                 highlightcolor=ADW["accent"], padx=4, pady=2)
 
@@ -729,7 +738,7 @@ class ScrollFrame(ttk.Frame):
         super().__init__(master, **kw)
         self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, height=120)
         self.vsb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.inner = ttk.Frame(self.canvas)
+        self.inner = ttk.Frame(self.canvas, padding=(6, 4, 6, 4))
         self.inner.bind("<Configure>", lambda e: self.canvas.configure(
             scrollregion=self.canvas.bbox("all")))
         self._win = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
@@ -812,8 +821,11 @@ class BitEditor(ttk.Frame):
         bb.pack(side="bottom", fill="x", pady=(8, 0))
         self.hexbar = ttk.Frame(self)
         self.hexbar.pack(side="bottom", fill="x")
-        self.sf = ScrollFrame(self)
-        self.sf.pack(side="top", fill="both", expand=True, pady=(4, 6))
+        # a frame like the log's, so the list is recognisable as a scrolling pane
+        box = tk.Frame(self, **frame_border_opts())
+        box.pack(side="top", fill="both", expand=True, pady=(4, 6))
+        self.sf = ScrollFrame(box)
+        self.sf.pack(fill="both", expand=True)
 
         what = "Fuses" if kind == "fuse" else "Lock Bits"
         self.btn_read = ttk.Button(bb, text=f"Read {what}", command=self.read)
