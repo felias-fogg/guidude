@@ -168,6 +168,12 @@ UART_BRIDGE_VIDS = {0x0403, 0x1A86, 0x10C4, 0x067B}
 # jtag2pdi, ...) has an RS-232 port besides USB.
 SERIAL_CAPABLE_USB = {(0x03EB, 0x2103)}
 
+# Programmers whose WinUSB driver sits on one interface of a composite USB
+# device (the other one is a COM port): avrdude's Windows libusb (avrdudes/libusb)
+# only opens whole devices. The Snap and PICkit 4 in MPLAB mode are not composite.
+WIN_COMPOSITE_WINUSB = {(0x04D8, 0x9036),        # PICkit 5
+                        (0x04D8, 0x9055)}        # PICkit Basic
+
 # Return code of chip_erase() when the erase is done later, while writing the
 # flash (urclock with a bootloader that cannot erase); not exported by SWIG
 LIBAVRDUDE_SOFTFAIL = getattr(ad, "LIBAVRDUDE_SOFTFAIL", -3)
@@ -275,6 +281,7 @@ def _scan_usb_windows():
         c = re.search(r"\((COM\d+)\)", name)
         if c:
             coms.append((vid, pid, c[1]))
+            name = name.replace(c[0], "").strip()   # the port is listed separately
         name = desc.get(did.upper(), name)
         if did.upper().startswith("USB\\") and "&MI_" not in did.upper():
             sn = did.split("\\")[-1]
@@ -657,7 +664,7 @@ class FilterCombobox(ttk.Combobox):
     """Editable combobox that narrows its list while typing."""
 
     def __init__(self, master, values=(), on_select=None, **kw):
-        super().__init__(master, **kw)
+        super().__init__(master, postcommand=self._on_post, **kw)
         self.all_values = list(values)
         self.on_select = on_select
         self["values"] = self.all_values
@@ -675,7 +682,17 @@ class FilterCombobox(ttk.Combobox):
         if ev.keysym in ("Return", "Up", "Down", "Tab", "Escape"):
             return
         t = self.get().strip().lower()
+        if t == self._committed.strip().lower():
+            # nothing typed (Shift, Ctrl, ... alone): the full current entry
+            # would narrow the list to itself
+            self["values"] = self.all_values
+            return
         self["values"] = [v for v in self.all_values if t in v.lower()] or self.all_values
+
+    def _on_post(self):
+        # opening the list without having typed anything shows all entries
+        if self.get().strip() == self._committed.strip():
+            self["values"] = self.all_values
 
     def set_committed(self, text):
         self._committed = text
@@ -1482,14 +1499,19 @@ SERIAL_PREF = ("serialupdi", "arduino", "urclock", "jtag2updi", "stk500v2",
                "stk500v1", "avr109", "butterfly")
 
 
+# An Arduino board: its bootloader, or a programmer firmware on it (ArduinoISP
+# sketch; dw-link 7 speaks the JTAGICE mkII protocol)
+ARDUINO_PREF = ("arduino", "urclock", "arduino_as_isp", "jtag2isp", "jtag2dw")
+
 # Serial-port (CDC) programmers that avrdude cannot tell apart by USB IDs
 # alone: preferred programmer type per (VID, PID); PID None = whole vendor.
 SERIAL_HINTS = {
     (0x16C0, 0x2A9B): ("stk500v2",),            # Diamex ALL-AVR / AVR-ISP stick
     (0x1FFB, 0x0081): ("stk500v2",),            # Pololu USB AVR Programmer
     (0x1FFB, 0x00B0): ("stk500v2",),            # Pololu USB AVR Programmer v2.x
-    (0x2341, None): ("arduino", "urclock"),     # Arduino boards
-    (0x2A03, None): ("arduino", "urclock"),     # Arduino.org boards
+    (0x2341, None): ARDUINO_PREF,               # Arduino boards
+    (0x2A03, None): ARDUINO_PREF,               # Arduino.org boards
+    (0x2886, None): ARDUINO_PREF,               # Seeed boards (Seeeduino)
 }
 
 
@@ -1663,7 +1685,7 @@ class App:
         ttk.Label(top, text="Port:").grid(row=2, column=0, sticky="w", pady=(6, 0))
         pf = ttk.Frame(top)
         pf.grid(row=2, column=1, columnspan=2, sticky="ew", padx=6, pady=(6, 0))
-        self.port_cb = ttk.Combobox(pf, width=22, postcommand=self._fill_ports)
+        self.port_cb = ttk.Combobox(pf, width=30, postcommand=self._fill_ports)
         self.port_cb.pack(side="left")
         self.port_cb.set(self.settings.get("port", "usb"))
         for ev in ("<<ComboboxSelected>>", "<Return>", "<FocusOut>"):
@@ -1886,6 +1908,11 @@ class App:
         """A recognised programmer (not merely a USB-UART bridge)."""
         return bool(self._tool_labels(dev)) and not (dev.vid in UART_BRIDGE_VIDS and dev.ports)
 
+    @staticmethod
+    def _twins(dev, devs):
+        """Is another device of the same kind (VID:PID) connected?"""
+        return any(d is not dev and (d.vid, d.pid) == (dev.vid, dev.pid) for d in devs)
+
     def _relevant(self, devs):
         """USB devices worth mentioning: programmers and serial adapters."""
         return [d for d in devs if d.ports or self._tool_labels(d)]
@@ -1939,9 +1966,13 @@ class App:
                                       self._recency("programmer", info[0]), info[0])
                         break
                 else:
-                    if tty and self._via_serial(info, tty):     # JTAGICE mkII on RS-232
-                        out[label] = (1, len(spref) + 1, self._recency("programmer", info[0]),
-                                      info[0])
+                    # JTAGICE mkII-compatible on a serial port (RS-232, dw-link);
+                    # with port usb on the serial port that counts as a hint
+                    stty = tty or (sdev.ports[0] if sdev and sdev.ports and usb_sn is None
+                                   else None)
+                    if stty and self._via_serial(info, stty):
+                        r = spref.index(info[0]) if info[0] in spref else len(spref) + 1
+                        out[label] = (1, r, self._recency("programmer", info[0]), info[0])
             elif info[3] == ad.CONNTYPE_SERIAL and have_tty and usb_sn is None:
                 r = spref.index(info[0]) if info[0] in spref else len(spref)
                 out[label] = (1, r, self._recency("programmer", info[0]), info[0])
@@ -1974,12 +2005,17 @@ class App:
         self._fill_programmers()
         self._auto_select("Programmer filter")
 
-    def _auto_select(self, reason, only=None):
+    def _auto_select(self, reason, only=None, usb_only=False):
         """In 'detected' mode pick the best detected programmer if the current
-        one is not detected (or, with ``only``, the best one for that device)."""
+        one is not detected (or, with ``only``, the best one for that device;
+        with ``usb_only``, the best USB programmer)."""
         if self.filter_cb.get() != "detected" or not self._det:
             return
         cands = self._det
+        if usb_only:
+            cands = {k: r for k, r in cands.items() if self.pgms[k][3] == ad.CONNTYPE_USB}
+            if not cands:
+                return
         if only is not None:
             cands = {k: r for k, r in cands.items()
                      if self._matches(self.pgms[k], only) or
@@ -1998,11 +2034,19 @@ class App:
 
     def _fill_ports(self):
         tools = [d for d in self.usb_devs if self._is_tool(d)]
-        names = list(dict.fromkeys(d.name() for d in tools))
-        vals = ["usb" + (PORT_SEP + ", ".join(names) if names else "")]
-        if len(tools) > 1:
-            vals += [f"usb:{d.serial}{PORT_SEP}{d.describe(serial=False)}"
-                     for d in tools if d.serial]
+        # name only the USB programmers usable with the selected interface
+        pm = self._pm()
+        usable = [d for d in tools
+                  if any(v[1] & pm and self._matches(v, d) for v in self.pgms.values())]
+        # one entry per USB programmer; choosing it selects a programmer type
+        # for it. usb:<serial number> only for several identical ones (else
+        # the programmer type tells avrdude which device is meant)
+        self._usb_entries = {}
+        for d in usable:
+            twin = d.serial and self._twins(d, usable)
+            port = f"usb:{d.serial}" if twin else "usb"
+            self._usb_entries[f"{port}{PORT_SEP}{d.name()}"] = d
+        vals = list(self._usb_entries) or ["usb"]
         # Serial ports of recognised USB debuggers/programmers (Snap, nEDBG,
         # Atmel-ICE, ...) are only a UART bridge to the target, not a way to
         # program it: leave them out unless that port is the current one.
@@ -2015,11 +2059,50 @@ class App:
 
     def _port_changed(self, _e=None):
         p = self.current_port()
+        dev = getattr(self, "_usb_entries", {}).get(self.port_cb.get().strip())
+        if dev is not None:                     # a particular USB programmer
+            self._last_port = p
+            self._use_usb_device(dev)
+            return
         if self.port_cb.get() != p:
             self.port_cb.set(p)
         if p != getattr(self, "_last_port", None):
             self._last_port = p
             self._fill_programmers()
+            # choosing a port = using the hardware there: in "detected" mode
+            # switch to a programmer for it if the current one does not fit
+            self._auto_select(f"Port {p}", usb_only=p.startswith("usb"))
+
+    def _use_usb_device(self, dev):
+        """The user chose USB programmer ``dev`` in the port menu: switch to a
+        programmer type for it unless the current one already fits."""
+        info = self.pgms.get(self.pgm_cb.get())
+        if not (info and self._matches(info, dev)):
+            pm = self._pm()
+            cands = [k for k, v in self.pgms.items() if v[1] & pm and self._matches(v, dev)]
+            if cands:
+                best = min(cands, key=lambda k: (pm_rank(self.pgms[k][1] & pm),
+                                                 self._recency("programmer", self.pgms[k][0]),
+                                                 self.pgms[k][0]))
+                self.pgm_cb.set_committed(best)
+                self.programmer_selected(best)
+                self.log(f"Port {dev.name()}: selected programmer {self.pgms[best][0]}",
+                         tag="notice")
+        self._fill_programmers()
+        self._update_hw_label()
+
+    def _show_port(self):
+        """Port field: for USB also name the device the programmer will use."""
+        p = self.current_port()
+        text = p
+        if p.startswith("usb"):
+            info = self.pgms.get(self.pgm_cb.get())
+            d = next((d for d in self.usb_devs if info and self._matches(info, d)
+                      and (not p.startswith("usb:") or d.serial == p[4:])), None)
+            if d is not None:
+                text = f"{p}{PORT_SEP}{d.name()}"
+        if self.port_cb.get() != text:
+            self.port_cb.set(text)
 
     def _update_hw_label(self):
         info = self.pgms.get(self.pgm_cb.get())
@@ -2052,6 +2135,7 @@ class App:
         self.hw_lbl.configure(text=mark + short, foreground="#109030" if ok else
                               "#d02020" if ok is False else "")
         self.hw_tip.text = full or short
+        self._show_port()
 
     def programmer_selected(self, text, probe=False):
         if probe:   # allow typing an id directly
@@ -2066,8 +2150,12 @@ class App:
             if devs or not self._via_serial(info, port):    # else keep the RS-232 port
                 self.port_cb.set("usb" if len(devs) <= 1 or not devs[0].serial
                                  else f"usb:{devs[0].serial}")
-        elif info[3] == ad.CONNTYPE_SERIAL and (port.startswith("usb") or not port):
-            # prefer a port of a plain USB serial adapter / board
+        elif (info[3] == ad.CONNTYPE_SERIAL or self._serial_capable(info) and not any(
+                self._matches(info, d) for d in self.usb_devs)) and \
+                (port.startswith("usb") or not port):
+            # prefer a port of a plain USB serial adapter / board (also for a
+            # JTAGICE mkII-compatible programmer that is not connected by USB,
+            # e.g. dw-link on an Arduino board)
             owned = {p for d in self.usb_devs for p in d.ports}
 
             def fit(pd):        # how well does this programmer suit the device?
@@ -2131,7 +2219,8 @@ class App:
             d = usable[-1]                     # plugging in = intent to use it
             if self._is_tool(d):
                 tools = [x for x in devs if self._is_tool(x)]
-                self.port_cb.set(f"usb:{d.serial}" if len(tools) > 1 and d.serial else "usb")
+                self.port_cb.set(f"usb:{d.serial}" if d.serial and self._twins(d, tools)
+                                 else "usb")
             else:
                 self.port_cb.set(d.ports[0])
             self._last_port = self.current_port()
@@ -2518,15 +2607,13 @@ class App:
                 info = self.pgms.get(lab)
                 if os.name == "nt" and pgm.conntype == ad.CONNTYPE_USB and info and \
                         any(d.vid == info[4] and d.pid in info[5] for d in self.usb_devs):
-                    if info[4] == 0x04D8:
-                        # WinUSB sits on an interface of a composite device,
-                        # which avrdude's Windows libusb cannot open
+                    if any((d.vid, d.pid) in WIN_COMPOSITE_WINUSB and d.pid in info[5]
+                           for d in self.usb_devs if d.vid == info[4]):
                         raise RuntimeError(
-                            f"cannot open {pid}: the Windows version cannot use Microchip "
-                            f"programmers with the MPLAB USB interface (PICkit 5, PICkit Basic, "
-                            f"...) yet - avrdude's Windows USB library does not support this "
-                            f"kind of device. Use a different programmer, or GUIDude on macOS "
-                            f"or Linux")
+                            f"cannot open {pid}: the Windows version cannot use the PICkit 5 "
+                            f"and PICkit Basic yet - avrdude's Windows USB library cannot open "
+                            f"a programmer interface that is part of a composite USB device. "
+                            f"Use a different programmer, or GUIDude on macOS or Linux")
                     raise RuntimeError(
                         f"cannot open {pid}: it is connected, but either another program "
                         f"is using it, or Windows has no suitable driver for it. USBasp, "

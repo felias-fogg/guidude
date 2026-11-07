@@ -1,0 +1,26 @@
+GUIDude for macOS
+=================
+
+Install: move GUIDude.app to the Applications folder (or anywhere else)
+and start it from there.
+
+First start
+-----------
+GUIDude is not notarized by Apple, so macOS blocks the first start
+("GUIDude cannot be opened ..."). Do this once:
+
+  1. Try to open GUIDude.app, and close the warning.
+  2. Open System Settings > Privacy & Security, scroll down and click
+     "Open Anyway" next to the message about GUIDude, then confirm.
+
+Alternatively, run in Terminal:
+
+     xattr -dr com.apple.quarantine /Applications/GUIDude.app
+
+Programmers
+-----------
+No drivers or permissions are needed: USB programmers, debuggers and
+Arduino boards / USB-serial adapters work as soon as they are connected.
+
+Requirements: macOS 11 (Big Sur) or later on Apple Silicon (arm64 package),
+macOS 10.13 (High Sierra) or later on Intel Macs (x86_64 package).

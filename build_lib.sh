@@ -47,6 +47,10 @@ fi
 #  0004  Python binding: do not link libpython (else the module works only with
 #        the Python it was built with); -D PYTHON_LIMITED_API=3.10 in
 #        AVRDUDE_CMAKE_ARGS builds one abi3 module for Python 3.10 and later
+#  0005  PICkit 5/Basic: real data transfers in MSVC builds (were stubs)
+# On Windows, avrdude-patches/libusb/ holds fixes for avrdude's libusb-win32
+# (avrdudes/libusb, fetched by cmake): it is cloned at the commit avrdude
+# pins, patched and used instead (PICkit 5/Basic: WinUSB on an interface).
 # Each patch is applied unless the source already contains it.
 for p in "$here"/avrdude-patches/*.patch; do
     [ -f "$p" ] || continue
@@ -87,6 +91,19 @@ if [ "$ostype" = darwin ]; then
     set -- "$@" -D "CMAKE_OSX_ARCHITECTURES=$(uname -m)"
     [ -n "$MACOSX_DEPLOYMENT_TARGET" ] && \
         set -- "$@" -D "CMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
+fi
+
+if [ "$ostype" = windows ] && ls "$here"/avrdude-patches/libusb/*.patch > /dev/null 2>&1; then
+    tag=$(sed -n '/FetchContent_Declare(libusb/,/)/s/.*GIT_TAG *\([0-9a-f]*\).*/\1/p' "$src/CMakeLists.txt")
+    lsrc="$bdir/libusb-patched"
+    rm -rf "$lsrc"      # small; a fresh clone keeps LF line endings for the patches
+    git -c core.autocrlf=false clone -q https://github.com/avrdudes/libusb.git "$lsrc"
+    git -C "$lsrc" checkout -q "${tag:-HEAD}"
+    for p in "$here"/avrdude-patches/libusb/*.patch; do
+        git -C "$lsrc" apply "$(cygpath -m "$p")"
+        echo "== Applied to libusb-win32 (${tag:-HEAD}): $(basename "$p")"
+    done
+    set -- "$@" -D "FETCHCONTENT_SOURCE_DIR_LIBUSB=$lsrc"
 fi
 
 if [ "$ostype" = windows ]; then

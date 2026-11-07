@@ -12,11 +12,9 @@ Drivers
 No driver installation is needed for
 
   - Microchip/Atmel debuggers and kits: Atmel-ICE, MPLAB Snap, PICkit 4,
-    Xplained Pro/Mini, Curiosity Nano (EDBG, nEDBG, mEDBG), JTAGICE3, ...
+    PICkit 5, PICkit Basic, Xplained Pro/Mini, Curiosity Nano (EDBG, nEDBG,
+    mEDBG), JTAGICE3, ...
   - Arduino boards and USB-serial adapters (their COM port is used).
-
-Not supported on Windows yet: PICkit 5 and PICkit Basic (avrdude's Windows
-USB library cannot access them; use GUIDude on macOS or Linux).
 
 These USB programmers need the WinUSB driver, installed once with Zadig:
 

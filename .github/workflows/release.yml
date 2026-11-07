@@ -109,8 +109,12 @@ jobs:
       - name: Package
         run: |
           name="GUIDude-$VERSION-macOS-${{ matrix.arch }}"
-          # ditto keeps the bundle's symlinks and code signature intact
-          ditto -c -k --sequesterRsrc --keepParent dist/GUIDude.app "$name.zip"
+          # app + install notes in one folder; ditto keeps the bundle's
+          # symlinks and code signature intact
+          mkdir -p "pkg/GUIDude"
+          ditto dist/GUIDude.app pkg/GUIDude/GUIDude.app
+          cp mac/INSTALL.txt pkg/GUIDude/
+          ditto -c -k --sequesterRsrc --keepParent pkg/GUIDude "$name.zip"
           shasum -a 256 "$name.zip" > "$name.zip.sha256"
           cat "$name.zip.sha256"
 

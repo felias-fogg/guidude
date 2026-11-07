@@ -42,6 +42,10 @@ exe = EXE(
     strip=False,
     upx=False,
     argv_emulation=False,
+    # Linux/Windows: the folder next to the executable with Python and all
+    # libraries (PyInstaller's default "_internal" says little when the two
+    # are copied elsewhere); inside a macOS .app the name does not matter
+    contents_directory="GUIDude_internal" if sys.platform != "darwin" else "_internal",
 )
 
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="GUIDude")

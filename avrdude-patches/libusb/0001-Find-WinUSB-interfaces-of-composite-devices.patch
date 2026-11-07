@@ -1,0 +1,195 @@
+From ff7f93eeecc7721e0a150efb7e56536f9e617120 Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Sat, 7 Nov 2026 15:07:43 +0100
+Subject: [PATCH] Find WinUSB interfaces of composite devices
+
+The WinUSB backend only enumerated GUID_DEVINTERFACE_USB_DEVICE, ie, whole
+devices, and only opened those whose own driver is WinUSB, libusb0 or
+libusbK. A composite device has usbccgp as its driver; WinUSB is bound to
+one of its interfaces (instance ID USB\VID_xxxx&PID_xxxx&MI_nn\...), which
+was never considered. Programmers such as the MPLAB PICkit 5 and PICkit
+Basic (WinUSB on interface 0, CDC serial port on interface 1) were
+therefore not found ("no device found matching VID 0x04d8 ..."), while
+MinGW builds with libusb-1.0 work.
+
+ - Enumerate in a second pass all present USB interface nodes with the
+   WinUSB service, look up their device interface GUID in the hardware key
+   (DeviceInterfaceGUIDs or DeviceInterfaceGUID) and open them via that
+   device interface path. WinUsb_GetDescriptor() on such a handle returns
+   the descriptors of the whole device, so VID/PID matching is unchanged.
+ - The WinUSB handle then refers to the interface WinUSB is bound to,
+   which need not be 0: remember its number, refuse to claim interfaces
+   below it (those belong to other drivers, eg, usbser) and map higher ones
+   to WinUsb_GetAssociatedInterface() indices relative to it.
+
+Whole devices with WinUSB (eg, USBasp) behave as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/libwinusb.h | 111 +++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 109 insertions(+), 2 deletions(-)
+
+diff --git a/src/libwinusb.h b/src/libwinusb.h
+index c19c273..7852497 100644
+--- a/src/libwinusb.h
++++ b/src/libwinusb.h
+@@ -21,10 +21,13 @@
+ #include <usbiodef.h>
+ #include <setupapi.h>
+ #include <strsafe.h>
++#include <objbase.h>
++#include <cwctype>
+ #include <lusb0_usb.h>
+ 
+ #pragma comment(lib, "winusb")
+ #pragma comment(lib, "setupapi")
++#pragma comment(lib, "ole32")
+ 
+ namespace LibWinUsb
+ {
+@@ -488,6 +491,12 @@ namespace LibWinUsb
+             }
+ 
+             m_hWinUsbInterface = hWinUsbInterface;
++
++            // On a composite device, WinUSB may be bound to an interface other
++            // than 0: the handle then refers to that interface, and further
++            // interfaces of the same function are relative to it.
++            USB_INTERFACE_DESCRIPTOR descriptor{};
++            m_firstInterface = WinUsb_QueryInterfaceSettings(hWinUsbInterface, 0, &descriptor) ? descriptor.bInterfaceNumber : 0;
+             return S_OK;
+         }
+ 
+@@ -563,12 +572,18 @@ namespace LibWinUsb
+ 
+         HRESULT ClaimInterface(uint8_t interfaceIndex) override
+         {
++            if (interfaceIndex < m_firstInterface)
++            {
++                // Interface of a composite device that WinUSB does not own
++                return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
++            }
++
+             m_associatedInterface.index = interfaceIndex;
+ 
+-            if (interfaceIndex > 0)
++            if (interfaceIndex > m_firstInterface)
+             {
+                 WINUSB_INTERFACE_HANDLE handle = nullptr;
+-                if (!WinUsb_GetAssociatedInterface(m_hWinUsbInterface, interfaceIndex, &handle))
++                if (!WinUsb_GetAssociatedInterface(m_hWinUsbInterface, static_cast<UCHAR>(interfaceIndex - m_firstInterface - 1), &handle))
+                 {
+                     return HRESULT_FROM_WIN32(GetLastError());
+                 }
+@@ -686,6 +701,7 @@ namespace LibWinUsb
+         };
+ 
+         WINUSB_INTERFACE_HANDLE m_hWinUsbInterface = nullptr;
++        uint8_t m_firstInterface = 0;
+         Interface m_associatedInterface;
+     };
+ 
+@@ -1265,9 +1281,100 @@ namespace LibWinUsb
+                 }
+             }
+ 
++            return EnumerateCompositeInterfaces();
++        }
++
++        // Composite devices (eg, PICkit 5, PICkit Basic: WinUSB + CDC) do not
++        // have WinUSB as the driver of the device itself but of one of its
++        // interfaces (instance ID USB\VID_xxxx&PID_xxxx&MI_nn\...). Such an
++        // interface is not found via GUID_DEVINTERFACE_USB_DEVICE; it registers
++        // the device interface GUID that its INF or MS OS descriptor names.
++        HRESULT EnumerateCompositeInterfaces()
++        {
++            DeviceInfoSet deviceInfoSet;
++            HRESULT hr = deviceInfoSet.GetClassDevs(nullptr, L"USB", nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
++            if (FAILED(hr))
++                return S_OK;            // Keep the devices found so far
++
++            for (DWORD index = 0; ; index++)
++            {
++                DeviceInfo deviceInfo;
++                if (!SetupDiEnumDeviceInfo(deviceInfoSet, index, &deviceInfo))
++                    break;
++
++                std::wstring instanceId;
++                std::wstring service;
++                uint32_t installState = 0;
++                if (FAILED(deviceInfo.GetProperty(deviceInfoSet, &DEVPKEY_Device_InstanceId, instanceId)) ||
++                    FAILED(deviceInfo.GetProperty(deviceInfoSet, &DEVPKEY_Device_Service, service)) ||
++                    FAILED(deviceInfo.GetProperty(deviceInfoSet, &DEVPKEY_Device_InstallState, installState)) ||
++                    installState != 0 ||
++                    _wcsicmp(service.c_str(), L"WINUSB") != 0 ||
++                    !IsInterfaceInstance(instanceId))
++                {
++                    continue;
++                }
++
++                GUID interfaceGuid{};
++                if (FAILED(GetDeviceInterfaceGuid(deviceInfoSet, &deviceInfo, interfaceGuid)))
++                    continue;
++
++                DeviceInfoSet interfaceSet;
++                if (FAILED(interfaceSet.GetClassDevs(&interfaceGuid, instanceId.c_str(), nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE)))
++                    continue;
++
++                SP_DEVICE_INTERFACE_DATA deviceInterface = { sizeof(SP_DEVICE_INTERFACE_DATA) };
++                if (!SetupDiEnumDeviceInterfaces(interfaceSet, nullptr, &interfaceGuid, 0, &deviceInterface))
++                    continue;
++
++                auto device = std::make_unique<UsbDevice>();
++                device->m_instanceId = instanceId;
++                device->m_service = service;
++                if (SUCCEEDED(GetDeviceInterfacePath(interfaceSet, &deviceInterface, device->m_interfacePath)))
++                {
++                    m_devices.push_back(std::move(device));
++                }
++            }
++
+             return S_OK;
+         }
+ 
++        static bool IsInterfaceInstance(const std::wstring& instanceId)
++        {
++            std::wstring id = instanceId;
++            for (auto& c : id)
++                c = towupper(c);
++
++            return id.compare(0, 4, L"USB\\") == 0 && id.find(L"&MI_") != std::wstring::npos;
++        }
++
++        // First GUID of DeviceInterfaceGUIDs (REG_MULTI_SZ) or DeviceInterfaceGUID
++        // (REG_SZ) in the device's hardware key ("Device Parameters")
++        static HRESULT GetDeviceInterfaceGuid(HDEVINFO hDeviceInfoSet, PSP_DEVINFO_DATA pDeviceInfo, GUID& guid)
++        {
++            HKEY hKey = SetupDiOpenDevRegKey(hDeviceInfoSet, pDeviceInfo, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
++            if (hKey == INVALID_HANDLE_VALUE)
++                return HRESULT_FROM_WIN32(GetLastError());
++
++            WCHAR buffer[256] = {};
++            LONG rc = ERROR_FILE_NOT_FOUND;
++            for (LPCWSTR name : { L"DeviceInterfaceGUIDs", L"DeviceInterfaceGUID" })
++            {
++                DWORD type = 0;
++                DWORD size = sizeof(buffer) - 2 * sizeof(WCHAR);    // Keep a terminating NUL
++                rc = RegQueryValueExW(hKey, name, nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size);
++                if (rc == ERROR_SUCCESS && (type == REG_SZ || type == REG_MULTI_SZ))
++                    break;
++                rc = ERROR_FILE_NOT_FOUND;
++            }
++
++            RegCloseKey(hKey);
++            if (rc != ERROR_SUCCESS)
++                return HRESULT_FROM_WIN32(rc);
++
++            return IIDFromString(buffer, &guid);
++        }
++
+         HRESULT GetDeviceInterfacePath(HDEVINFO hDeviceInfoSet, PSP_DEVICE_INTERFACE_DATA pDeviceInterfaceData, std::wstring& deviceInterfacePath)
+         {
+             DWORD dwRequiredSize = 0;
+-- 
+2.56.0
+

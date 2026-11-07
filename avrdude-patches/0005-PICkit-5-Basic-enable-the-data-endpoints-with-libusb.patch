@@ -1,0 +1,39 @@
+From 767474e01c0e3a1a25f07dea414a1e7112824a48 Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Sat, 7 Nov 2026 15:06:07 +0100
+Subject: [PATCH] PICkit 5/Basic: enable the data endpoints with libusb-win32
+ (MSVC builds)
+
+pickit5.c includes <usb.h> (HAVE_USB_H) or, in MSVC builds on Windows,
+<lusb0_usb.h> (HAVE_LUSB0_USB_H), but the block with usbdev_bulk_recv(),
+usbdev_bulk_send() and usbdev_check_connected() was only compiled for
+HAVE_USB_H. MSVC builds got the stubs that return -1, so every transfer on
+the data endpoints failed silently: signature and fuses could be read
+(command endpoints), but reading or writing flash and EEPROM failed with
+"reading data memory failed" / "sending script with download failed",
+after which the programmer had to be reconnected.
+
+Use the real functions whenever a libusb-0.1 API is available, as the
+rest of pickit5.c already does.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/pickit5.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/pickit5.c b/src/pickit5.c
+index 6619c04a..afbc2cb5 100644
+--- a/src/pickit5.c
++++ b/src/pickit5.c
+@@ -2197,7 +2197,7 @@ void pickit5_initpgm(PROGRAMMER *pgm) {
+ 
+ 
+ 
+-#if defined(HAVE_USB_H)
++#if defined(HAVE_USB_H) || defined(HAVE_LUSB0_USB_H)
+ /*
+  * In order to make it easier for users, we try to figure out if a specific VID/PID is connected
+  * to the computer. For that, going through the list of usb devices is more straightforward
+-- 
+2.56.0
+
