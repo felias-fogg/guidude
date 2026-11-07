@@ -1,0 +1,77 @@
+From 089dcc82047a5488fa1c98bc1f2e6ff94f6e9d27 Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Sat, 7 Nov 2026 11:52:06 +0100
+Subject: [PATCH 4/4] Python binding: do not link libpython, optional stable
+ ABI (abi3)
+
+An extension module gets the Python C API symbols from the interpreter
+that imports it. Linking libpython into swig_avrdude ties the module to
+the exact Python installation found at build time (on macOS, otool -L
+shows the absolute path of the framework), so it fails or misbehaves
+with any other interpreter. Link it only on Windows, where an import
+library is required, and use -undefined dynamic_lookup on macOS.
+
+The new cache variable PYTHON_LIMITED_API (e.g. -D PYTHON_LIMITED_API=3.10)
+builds the module against the limited C API: one _swig_avrdude.abi3.so
+(or .pyd linked to python3.dll) then works with that and all later
+Python versions. This is what binary wheels on PyPI need, so users can
+pip install the binding instead of building avrdude with SWIG.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ CMakeLists.txt     |  1 +
+ src/CMakeLists.txt | 24 +++++++++++++++++++++++-
+ 2 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8449faf8..71bcb803 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -35,6 +35,7 @@ option(USE_LIBUSBWIN32 "Prefer libusb-win32 over libusb" OFF)
+ option(DEBUG_CMAKE "Enable debugging output for this CMake project" OFF)
+ option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+ option(FORCE_DISABLE_PYTHON_SUPPORT "Option to explicitly disable Python support" OFF)
++set(PYTHON_LIMITED_API "" CACHE STRING "Build the Python module for the stable ABI (abi3) of this and later Python versions, e.g. 3.10")
+ 
+ if(WIN32)
+     # Prefer static libraries over DLLs on Windows
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 10dfa0a0..bce70625 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -399,9 +399,31 @@ if(HAVE_SWIG)
+     ${LIB_LIBSERIALPORT}
+     ${LIB_NCURSES}
+     ${LIB_LIBGPIOD}
+-    ${Python3_LIBRARIES}
+     ${EXTRA_WINDOWS_LIBRARIES}
+     )
++  # An extension module gets the Python symbols from the interpreter that loads
++  # it; linking libpython would tie it to one Python installation
++  if(WIN32)
++    if(PYTHON_LIMITED_API)
++      # pyconfig.h requests python3.lib, the import library of the stable ABI
++      target_link_directories(swig_avrdude PRIVATE ${Python3_LIBRARY_DIRS})
++    else()
++      target_link_libraries(swig_avrdude PRIVATE ${Python3_LIBRARIES})
++    endif()
++  elseif(APPLE)
++    target_link_options(swig_avrdude PRIVATE -undefined dynamic_lookup)
++  endif()
++  if(PYTHON_LIMITED_API)
++    # one module for all Python versions >= PYTHON_LIMITED_API, e.g. 3.10
++    string(REPLACE "." ";" _pyver "${PYTHON_LIMITED_API}")
++    list(GET _pyver 0 _pymajor)
++    list(GET _pyver 1 _pyminor)
++    math(EXPR _pyhex "(${_pymajor} << 24) | (${_pyminor} << 16)" OUTPUT_FORMAT HEXADECIMAL)
++    target_compile_definitions(swig_avrdude PRIVATE Py_LIMITED_API=${_pyhex})
++    if(NOT WIN32)
++      set_target_properties(swig_avrdude PROPERTIES SUFFIX ".abi3.so")
++    endif()
++  endif()
+ endif()
+ 
+ # =====================================
+-- 
+2.56.0
+

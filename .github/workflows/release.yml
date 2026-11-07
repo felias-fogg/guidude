@@ -5,6 +5,7 @@ name: Release
 #   macOS x86_64  (Intel, macOS 10.13 High Sierra or later)
 #   Linux x86_64  and  Linux aarch64  (glibc 2.35 or later: Ubuntu 22.04,
 #                  Debian 12, Raspberry Pi OS bookworm, Fedora 36, ...)
+#   Windows x64   (Windows 10 or later)
 #
 #  - push of a tag v<APP_VERSION>  -> draft GitHub release with all packages
 #  - manual run (workflow_dispatch) -> build only, packages as workflow artifacts
@@ -186,9 +187,74 @@ jobs:
           name: GUIDude-${{ steps.version.outputs.version }}-linux-${{ matrix.arch }}
           path: GUIDude-*.tar.gz*
 
+  windows:
+    name: Windows x64
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash          # Git Bash: the same build scripts as on macOS/Linux
+    env:
+      PYTHON: python
+    steps:
+      - name: Check out GUIDude
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          v=$(sed -n 's/^APP_VERSION = "\(.*\)"$/\1/p' guidude.py)
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match APP_VERSION $v in guidude.py"
+            exit 1
+          fi
+
+      - name: Check out avrdude (${{ env.AVRDUDE_REPO }} @ ${{ env.AVRDUDE_REF }})
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.AVRDUDE_REPO }}
+          ref: ${{ env.AVRDUDE_REF }}
+          path: avrdude-src
+
+      - name: Install Python (python.org build, includes Tk)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install build tools
+        # MSVC and CMake are on the runner; flex/bison as in avrdude's own CI
+        run: |
+          curl -fsSL -o winflexbison.zip \
+            https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip
+          7z x -y -owinflexbison winflexbison.zip > /dev/null
+          cygpath -w "$PWD/winflexbison" >> "$GITHUB_PATH"
+          command -v swig || choco install swig -y --no-progress
+          python -c "import sys, tkinter; print(sys.version, 'Tk', tkinter.TkVersion)"
+
+      - name: Build libavrdude Python module
+        run: ./build_lib.sh avrdude-src
+
+      - name: Build application (includes --selftest)
+        run: ./make_dist.sh
+
+      - name: Package
+        run: |
+          name="GUIDude-$VERSION-windows-x64"
+          cp windows/INSTALL.txt dist/GUIDude/
+          (cd dist && 7z a -tzip "../$name.zip" GUIDude > /dev/null)
+          sha256sum "$name.zip" > "$name.zip.sha256"
+          cat "$name.zip.sha256"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GUIDude-${{ steps.version.outputs.version }}-windows-x64
+          path: GUIDude-*.zip*
+
   release:
     name: Draft release
-    needs: [macos, linux]
+    needs: [macos, linux, windows]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
@@ -212,6 +278,7 @@ jobs:
           | `GUIDude-*-macOS-x86_64.zip` | Mac with Intel processor, macOS 10.13 or later |
           | `GUIDude-*-linux-x86_64.tar.gz` | Linux PC with glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or later) |
           | `GUIDude-*-linux-aarch64.tar.gz` | 64-bit ARM Linux, e.g. Raspberry Pi OS 64-bit (bookworm or later) |
+          | `GUIDude-*-windows-x64.zip` | Windows 10 or 11, 64-bit (x64) |
           EOF
           if ! gh release view "$GITHUB_REF_NAME" -R "$REPO" > /dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" -R "$REPO" --draft \

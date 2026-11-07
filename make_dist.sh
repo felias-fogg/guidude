@@ -1,19 +1,25 @@
 #!/bin/sh
 # Build a self-contained GUIDude with PyInstaller.
-#   ./make_dist.sh            -> dist/GUIDude.app (macOS) or dist/GUIDude/ (Linux)
+#   ./make_dist.sh            -> dist/GUIDude.app (macOS) or dist/GUIDude/ (Linux,
+#                                Windows: run in Git Bash)
 # Run ./build_lib.sh first (once) to produce lib/.
 set -e
 cd "$(dirname "$0")"
 [ -f lib/swig_avrdude.py ] || ./build_lib.sh
 # same Python as the one the SWIG module was built for (see build_lib.sh)
-if [ ! -x .venv/bin/pyinstaller ]; then
+bin=.venv/bin
+[ -d .venv/Scripts ] && bin=.venv/Scripts      # Windows venv layout
+if [ ! -x $bin/pyinstaller ] && [ ! -x $bin/pyinstaller.exe ]; then
     "${PYTHON:-python3}" -m venv .venv
-    .venv/bin/pip install -q --upgrade pip      # old distro pips are too old
-    .venv/bin/pip install -q "pyinstaller${PYINSTALLER_VERSION:+==$PYINSTALLER_VERSION}"
+    [ -d .venv/Scripts ] && bin=.venv/Scripts
+    $bin/python -m pip install -q --upgrade pip      # old distro pips are too old
+    $bin/python -m pip install -q "pyinstaller${PYINSTALLER_VERSION:+==$PYINSTALLER_VERSION}"
 fi
-.venv/bin/pyinstaller --noconfirm guidude.spec
+$bin/pyinstaller --noconfirm guidude.spec
 if [ -d dist/GUIDude.app ]; then
     exe=dist/GUIDude.app/Contents/MacOS/GUIDude
+elif [ -f dist/GUIDude/GUIDude.exe ]; then
+    exe=dist/GUIDude/GUIDude.exe
 else
     exe=dist/GUIDude/GUIDude
 fi

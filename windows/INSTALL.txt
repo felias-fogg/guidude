@@ -1,0 +1,35 @@
+GUIDude for Windows
+===================
+
+Start:  GUIDude.exe   (in this folder; the folder can be moved anywhere,
+                       e.g. to C:\Program Files or your Documents)
+
+GUIDude is not signed. On the first start Windows may show "Windows protected
+your PC": click "More info", then "Run anyway".
+
+Drivers
+-------
+No driver installation is needed for
+
+  - Microchip/Atmel debuggers and kits: Atmel-ICE, MPLAB Snap, PICkit 4,
+    Xplained Pro/Mini, Curiosity Nano (EDBG, nEDBG, mEDBG), JTAGICE3, ...
+  - Arduino boards and USB-serial adapters (their COM port is used).
+
+Not supported on Windows yet: PICkit 5 and PICkit Basic (avrdude's Windows
+USB library cannot access them; use GUIDude on macOS or Linux).
+
+These USB programmers need the WinUSB driver, installed once with Zadig:
+
+  USBasp, USBtinyISP, AVRISP mkII, AVR Dragon, JTAGICE mkII, STK600,
+  FTDI-based MPSSE programmers (avrftdi), Micronucleus, ...
+
+  1. Download Zadig from https://zadig.akeo.ie and run it.
+  2. Plug in the programmer. If it does not appear in the list, choose
+     Options > List All Devices.
+  3. Select the programmer (e.g. "USBasp"), choose "WinUSB" as the driver
+     and click "Install Driver" (or "Replace Driver").
+
+  Take care to select the right device: do not replace the driver of a
+  USB-serial adapter or Arduino board that you use through its COM port.
+
+Requirements: Windows 10 or 11, 64-bit (x64).

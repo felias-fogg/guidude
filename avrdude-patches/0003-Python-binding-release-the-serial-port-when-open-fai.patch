@@ -1,0 +1,54 @@
+From 2b839fcc20cec6ad9a57cb7e92508959a1c22247 Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Fri, 6 Nov 2026 22:39:06 +0100
+Subject: [PATCH 3/4] Python binding: release the serial port when open() fails
+
+Many programmers (eg, arduino, urclock, stk500v2) return an error from
+open() after the serial port was opened, eg, when a bootloader does not
+answer, without closing the port. The avrdude CLI exits then, so this never
+matters there. An application using libavrdude keeps running, and the port
+stays busy: on Windows every further attempt fails with "cannot open port
+\\.\COM9: Access denied" until the application is restarted.
+
+Calling pgm->close() from Python after a failed open() is not safe, as
+pgm->fd may still hold a stale handle of an earlier session. So the wrapper
+of open() now marks pgm->fd invalid beforehand and, if open() fails, closes
+a serial port that open() has opened. Ports starting with "usb" are left
+alone as pgm->fd may then hold a USB handle.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/libavrdude.i | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/libavrdude.i b/src/libavrdude.i
+index d2feb4ac..045f8c1c 100644
+--- a/src/libavrdude.i
++++ b/src/libavrdude.i
+@@ -538,6 +538,23 @@ typedef enum {
+   }
+ }
+ 
++// Many programmers (eg, arduino, urclock, stk500v2) leave the serial port
++// open when their open() fails after opening it, eg, as a bootloader does not
++// answer. The avrdude CLI exits then, but an application keeps running with
++// the port still busy: on Windows it cannot be opened again at all. So mark
++// the file descriptor invalid before open() and, should open() fail, release
++// a serial port it has opened. Ports "usb..." are left alone: there pgm->fd
++// can hold a USB handle that must not be treated as a serial one.
++%feature("action") programmer::open {
++  arg1->fd.pfd = (void *) -1;   // INVALID_HANDLE_VALUE on Windows, ifd = -1 elsewhere
++  result = (int) arg1->open(arg2, (const char *) arg3);
++  if(result < 0 && serdev == &serial_serdev && arg1->fd.pfd != (void *) -1 &&
++    arg3 && !str_casestarts(arg3, "usb")) {
++    serial_close(&arg1->fd);
++    arg1->fd.pfd = (void *) -1;
++  }
++}
++
+ %immutable;
+ typedef struct programmer {
+   LISTID id;
+-- 
+2.56.0
+

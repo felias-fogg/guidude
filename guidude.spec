@@ -15,7 +15,7 @@ from pathlib import Path
 
 here = Path(SPECPATH)
 # single source of truth for the version: APP_VERSION in guidude.py
-version = re.search(r'^APP_VERSION = "([^"]+)"', (here / "guidude.py").read_text(), re.M)[1]
+version = re.search(r'^APP_VERSION = "([^"]+)"', (here / "guidude.py").read_text(encoding="utf-8"), re.M)[1]
 lib = here / "lib"
 if not (lib / "swig_avrdude.py").is_file():
     raise SystemExit("lib/swig_avrdude.py missing - run ./build_lib.sh first")

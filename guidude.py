@@ -29,7 +29,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GUIDude"
-APP_VERSION = "0.9.3"
+APP_VERSION = "0.10.0"
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +162,16 @@ class UsbDevice:
 # programmers with the same VID/PID.
 UART_BRIDGE_VIDS = {0x0403, 0x1A86, 0x10C4, 0x067B}
 
+# USB programmers (connection_type = usb in avrdude.conf) whose hardware can
+# also be connected to a serial port; avrdude decides by the port name ("usb"
+# or a serial port). JTAGICE mkII (03EB:2103, jtag2, jtag2isp, jtag2dw,
+# jtag2pdi, ...) has an RS-232 port besides USB.
+SERIAL_CAPABLE_USB = {(0x03EB, 0x2103)}
+
+# Return code of chip_erase() when the erase is done later, while writing the
+# flash (urclock with a bootloader that cannot erase); not exported by SWIG
+LIBAVRDUDE_SOFTFAIL = getattr(ad, "LIBAVRDUDE_SOFTFAIL", -3)
+
 
 def _scan_usb_macos():
     import plistlib
@@ -231,16 +241,31 @@ def _scan_usb_linux():
     return list(devs.values())
 
 
-def _scan_usb_windows():        # untested
+def _scan_usb_windows():
     import subprocess
+    # UTF-8 output: otherwise the console code page (cp850, ...), which
+    # Python would decode as cp1252 or - in UTF-8 mode - not at all.
+    # Windows names most debuggers just "USB Composite Device" (localised):
+    # also fetch the product string the device reports (BusReportedDeviceDesc,
+    # e.g. "MPLAB Snap ICD CMSIS-DAP") of the top-level USB devices
     cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-           "Get-CimInstance Win32_PnPEntity | Where-Object { $_.DeviceID -match 'VID_[0-9A-F]{4}' }"
-           " | ForEach-Object { $_.DeviceID + '|' + $_.Name }"]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=20,
-                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-    devs, coms = {}, []
+           "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+           "$all = Get-CimInstance Win32_PnPEntity | Where-Object { $_.DeviceID -match 'VID_[0-9A-F]{4}' }; "
+           "$all | ForEach-Object { $_.DeviceID + '|' + $_.Name }; "
+           "$all | Where-Object { $_.DeviceID -match '^USB\\\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}\\\\' }"
+           " | Get-PnpDeviceProperty -KeyName DEVPKEY_Device_BusReportedDeviceDesc"
+           " -ErrorAction SilentlyContinue"
+           " | ForEach-Object { 'DESC|' + $_.InstanceId + '|' + $_.Data }"]
+    out = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace",
+                         timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    devs, coms, desc = {}, [], {}
     for line in out.splitlines():
-        if "|" not in line:
+        if line.startswith("DESC|") and line.count("|") >= 2:
+            _, did, d = line.split("|", 2)
+            if d.strip():
+                desc[did.upper()] = d.strip()
+    for line in out.splitlines():
+        if "|" not in line or line.startswith("DESC|"):
             continue
         did, name = line.split("|", 1)
         m = re.search(r"VID_([0-9A-F]{4})[&+]PID_([0-9A-F]{4})", did, re.I)
@@ -250,6 +275,7 @@ def _scan_usb_windows():        # untested
         c = re.search(r"\((COM\d+)\)", name)
         if c:
             coms.append((vid, pid, c[1]))
+        name = desc.get(did.upper(), name)
         if did.upper().startswith("USB\\") and "&MI_" not in did.upper():
             sn = did.split("\\")[-1]
             sn = "" if "&" in sn else sn
@@ -1014,9 +1040,9 @@ class BitEditor(ttk.Frame):
         """True (after telling the user) if the selected programmer is a
         bootloader: those cannot read or write fuses and lock bits (Optiboot
         answers every fuse read with 0x00)."""
-        info = self.app.pgms.get(self.app.pgm_cb.get())
-        if not info or info[1] & ~ad.PM_SPM:
+        if not self.app.bootloader_selected():
             return False
+        info = self.app.pgms[self.app.pgm_cb.get()]
         what = "fuses" if self.kind == "fuse" else "lock bits"
         messagebox.showinfo(APP_NAME, f"A bootloader ({info[0]}) cannot read or change "
                             f"{what}.\n\nUse an ISP, UPDI, JTAG, ... programmer for this.")
@@ -1253,7 +1279,7 @@ class MemoryPanel(ttk.Frame):
         def job(pgm, p):
             m = ad.avr_locate_mem(p, self.memname)
             if ad.avr_read_mem(pgm, p, m) < 0:
-                raise RuntimeError(f"failed to read {self.memname}")
+                raise RuntimeError(f"failed to read {self.memname}{self._bl_hint()}")
             return m.get(m.size)
         data = self.app.session(job, f"Reading {self.memname}")
         if data is not None:
@@ -1299,7 +1325,7 @@ class MemoryPanel(ttk.Frame):
     def _compare(self, pgm, p, m, n, expected):
         # Read back only the pages that are allocated by the file
         if ad.avr_read_mem(pgm, p, m, p) < 0:
-            raise RuntimeError(f"failed to read {self.memname}")
+            raise RuntimeError(f"failed to read {self.memname}{self._bl_hint()}")
         got = m.get(n)
         if got == expected:
             return None
@@ -1321,11 +1347,15 @@ class MemoryPanel(ttk.Frame):
             expected = m.get(n)
             if erase:
                 self.app.log("Erasing chip", ad.MSG_INFO)
-                if pgm.chip_erase(p) < 0:
+                rc = pgm.chip_erase(p)
+                if rc == LIBAVRDUDE_SOFTFAIL:   # urclock: erases while writing flash
+                    self.app.log("The bootloader cannot erase the chip; the whole "
+                                 "flash is written instead", ad.MSG_INFO)
+                elif rc < 0:
                     raise RuntimeError("chip erase failed")
             rc = ad.avr_write_mem(pgm, p, m, n, not erase)
             if rc < 0:
-                raise RuntimeError(f"failed to write {self.memname} (rc={rc})")
+                raise RuntimeError(f"failed to write {self.memname} (rc={rc}){self._bl_hint()}")
             self.app.log(f"Wrote {n} bytes to {self.memname}", tag="ok")
             if verify:
                 return self._compare(pgm, p, m, n, expected), n
@@ -1345,7 +1375,7 @@ class MemoryPanel(ttk.Frame):
                 # an empty file (e.g. read from an erased chip) means: all 0xFF
                 last = ad.avr_read_mem(pgm, p, m)
                 if last < 0:
-                    raise RuntimeError(f"failed to read {self.memname}")
+                    raise RuntimeError(f"failed to read {self.memname}{self._bl_hint()}")
                 if last == 0:
                     return None, "empty"
                 data = m.get(last)
@@ -1371,7 +1401,16 @@ class MemoryPanel(ttk.Frame):
             self.app.log(f"Verification FAILED at 0x{a:04X}: device 0x{dev:02X}, "
                          f"file 0x{exp:02X}", ad.MSG_ERROR)
             messagebox.showerror(APP_NAME, f"{self.memname} verification failed at "
-                                 f"address 0x{a:04X}\n(device 0x{dev:02X}, file 0x{exp:02X})")
+                                 f"address 0x{a:04X}\n(device 0x{dev:02X}, file 0x{exp:02X})"
+                                 + self._bl_hint("\n\n"))
+
+    def _bl_hint(self, sep=". "):
+        """Explanation for EEPROM errors through a bootloader."""
+        if self.memname != "eeprom" or not self.app.bootloader_selected():
+            return ""
+        return (sep + "Many bootloaders (e.g. Optiboot on Arduino boards) cannot read or write "
+                "the EEPROM, or silently ignore writes: use an ISP, UPDI, ... programmer "
+                "for the EEPROM")
 
     def read_to_file(self):
         # Suggest the file from the field (same folder and name); the save
@@ -1395,7 +1434,7 @@ class MemoryPanel(ttk.Frame):
             m = ad.avr_locate_mem(p, self.memname)
             n = ad.avr_read_mem(pgm, p, m)
             if n < 0:
-                raise RuntimeError(f"failed to read {self.memname}")
+                raise RuntimeError(f"failed to read {self.memname}{self._bl_hint()}")
             if n == 0:   # still write the (empty) file, like the avrdude CLI
                 self.app.log(f"{self.memname} is empty (all 0xFF)", ad.MSG_INFO)
                 n = m.size if fmt == ad.FMT_RBIN else 0
@@ -1492,7 +1531,7 @@ class App:
         self._prog_hdr = ""
         self.sp = settings_path()
         try:
-            self.settings = json.loads(self.sp.read_text())
+            self.settings = json.loads(self.sp.read_text(encoding="utf-8"))
         except Exception:
             self.settings = {}
 
@@ -1530,6 +1569,14 @@ class App:
             self.log(f"Detected {d.describe()}" + (f" on {', '.join(d.ports)}" if d.ports else ""),
                      tag="notice")
         self._auto_select("Detected hardware")
+        lab = self.pgm_cb.get()
+        if lab in self.pgms:
+            # the saved port may not fit the programmer (e.g. usb for arduino):
+            # same port choice as when selecting it (keeps a fitting port)
+            port = self.current_port()
+            self.programmer_selected(lab)
+            if self.current_port() != port:
+                self._fill_programmers()
         self.root.after(500, self._scan_tick)
 
     # -- look & feel ---------------------------------------------------------
@@ -1846,6 +1893,22 @@ class App:
     def _port_owner(self, port):
         return next((d for d in self.usb_devs if port in d.ports), None)
 
+    def _serial_capable(self, info):
+        """Can this programmer be used through a serial port?"""
+        return info[3] == ad.CONNTYPE_SERIAL or \
+            any((info[4], pid) in SERIAL_CAPABLE_USB for pid in info[5])
+
+    def _via_serial(self, info, port):
+        """Is a USB programmer like the JTAGICE mkII meant to be used through
+        serial ``port``? Any serial port except the CDC port of a recognised
+        debugger (Snap, nEDBG, ...): RS-232, a USB-serial adapter, or an
+        Arduino board running a mkII-compatible firmware such as dw-link 7."""
+        if info[3] != ad.CONNTYPE_USB or not port or port.lower().startswith("usb") \
+                or not self._serial_capable(info):
+            return False
+        d = self._port_owner(port)
+        return d is None or not self._is_tool(d)
+
     def _detected(self):
         """label -> rank for programmers whose hardware is connected, narrowed
         by the port: usb:<sn> = that device, serial port = serial programmers
@@ -1875,6 +1938,10 @@ class App:
                         out[label] = (2 if bridge else 0, pm_rank(info[1] & pm),
                                       self._recency("programmer", info[0]), info[0])
                         break
+                else:
+                    if tty and self._via_serial(info, tty):     # JTAGICE mkII on RS-232
+                        out[label] = (1, len(spref) + 1, self._recency("programmer", info[0]),
+                                      info[0])
             elif info[3] == ad.CONNTYPE_SERIAL and have_tty and usb_sn is None:
                 r = spref.index(info[0]) if info[0] in spref else len(spref)
                 out[label] = (1, r, self._recency("programmer", info[0]), info[0])
@@ -1959,7 +2026,8 @@ class App:
         port = self.current_port()
         short = full = ""
         ok = None
-        if info and info[3] == ad.CONNTYPE_USB and info[4]:
+        serial = info and (info[3] == ad.CONNTYPE_SERIAL or self._via_serial(info, port))
+        if info and info[3] == ad.CONNTYPE_USB and info[4] and not serial:
             devs = [d for d in self.usb_devs if self._matches(info, d)
                     and (not port.startswith("usb:") or d.serial == port[4:])]
             if devs:
@@ -1972,7 +2040,7 @@ class App:
                 ok, short = False, "not connected"
                 full = f"No USB device {info[4]:04X}:" + \
                     "/".join(f"{p:04X}" for p in info[5]) + " found"
-        elif info and info[3] == ad.CONNTYPE_SERIAL:
+        elif serial:
             d = self._port_owner(port)
             if d:
                 ok, short, full = True, d.name(), f"{d.describe()} on {port}"
@@ -1995,8 +2063,9 @@ class App:
         port = self.current_port()
         if info[3] == ad.CONNTYPE_USB and not port.startswith("usb"):
             devs = [d for d in self.usb_devs if self._matches(info, d)]
-            self.port_cb.set("usb" if len(devs) <= 1 or not devs[0].serial
-                             else f"usb:{devs[0].serial}")
+            if devs or not self._via_serial(info, port):    # else keep the RS-232 port
+                self.port_cb.set("usb" if len(devs) <= 1 or not devs[0].serial
+                                 else f"usb:{devs[0].serial}")
         elif info[3] == ad.CONNTYPE_SERIAL and (port.startswith("usb") or not port):
             # prefer a port of a plain USB serial adapter / board
             owned = {p for d in self.usb_devs for p in d.ports}
@@ -2157,7 +2226,7 @@ class App:
                  (tag,) if tag else ())
         t.see("end")
         t.configure(state="disabled")
-        if level <= ad.MSG_ERROR:
+        if level <= ad.MSG_ERROR and text.strip():
             self.status.configure(text=text.strip().splitlines()[0][:90])
         self._pump()
 
@@ -2285,7 +2354,7 @@ class App:
                                          filetypes=[("Text", "*.txt"), ("All files", "*")])
         if f:
             try:
-                Path(f).write_text(self.logtxt.get("1.0", "end-1c"))
+                Path(f).write_text(self.logtxt.get("1.0", "end-1c"), encoding="utf-8")
                 self.log(f"Log saved to {f}", tag="ok")
             except OSError as e:
                 messagebox.showerror(APP_NAME, f"Cannot save log:\n{e}")
@@ -2300,7 +2369,23 @@ class App:
         ad.cvar.verbose = v
         self.settings["verbose"] = v
 
-    def msg_callback(self, target, lno, fname, func, msgmode, msglvl, msg, backslash_v):
+    # Called from inside libavrdude: an exception escaping from here would
+    # break the running C call (SystemError), so swallow everything.
+    def msg_callback(self, *args):
+        try:
+            self._msg(*args)
+        except Exception:
+            pass
+
+    def progress_callback(self, *args):
+        try:
+            self._progress(*args)
+        except Exception:
+            pass
+
+    def _msg(self, target, lno, fname, func, msgmode, msglvl, msg, backslash_v):
+        if msglvl <= ad.MSG_ERROR and getattr(self, "_errs", None) is not None:
+            self._errs.append(msg)          # for the hints after a failed open
         if ad.cvar.verbose < msglvl:
             return
         t = self.logtxt
@@ -2319,7 +2404,7 @@ class App:
         s += msg
         self.log(s, msglvl, nl=False)
 
-    def progress_callback(self, percent, etime, hdr, finish):
+    def _progress(self, percent, etime, hdr, finish):
         if hdr:
             self._prog_hdr = hdr
         if percent < 0:
@@ -2389,22 +2474,64 @@ class App:
         self.fail_stage = "open"
         try:
             ad.init_cx(pgm)
+            # avrdude's -p and -c: used in messages, and urclock needs the
+            # part unless the bootloader reports it (read-only in libavrdude
+            # without avrdude-patches/0002)
+            for var, val in (("partdesc", p.id), ("pgmid", pid)):
+                try:
+                    setattr(ad.cvar, var, val)
+                except AttributeError:
+                    pass
             pgm.initpgm()
             pgm.setup()
-            if pgm.open(port) < 0:
-                if pgm.conntype == ad.CONNTYPE_SERIAL and os.path.exists(port):
+            self._errs = []
+            rc = pgm.open(port)
+            errs, self._errs = " ".join(self._errs), None
+            if rc < 0:
+                # os.path.exists() is True on Windows only for COM1..COM9
+                port_ok = port.upper() in list_serial_ports() if os.name == "nt" \
+                    else os.path.exists(port)
+                if port_ok and not port.lower().startswith("usb"):     # serial port
                     if pgm.prog_modes & ad.PM_SPM:
                         # bootloader protocols (arduino, urclock, avr109, ...)
                         raise RuntimeError(
                             f"no valid answer from the bootloader ({pid}) on {port}. "
                             f"The board may have no bootloader or a different one "
-                            f"(try urclock), or a sketch that "
+                            f"(try {'arduino' if pid == 'urclock' else 'urclock'}), or a sketch that "
                             f"blocks the reset is running")
+                    if "DEBUGWIRE_SYNC_FAILED" in errs:
+                        raise RuntimeError(
+                            f"{pid} on {port} answered, but cannot reach the target through "
+                            f"debugWIRE. Check the connection to the target's RESET pin and "
+                            f"the target's power. debugWIRE must be enabled (DWEN fuse, set "
+                            f"over ISP); a capacitor or a strong pull-up (< 10 kΩ) on RESET "
+                            f"disturbs it")
+                    if "bad response" in errs or "RSP_" in errs:
+                        raise RuntimeError(
+                            f"{pid} on {port} answered, but reported an error (see the log): "
+                            f"check the connection between programmer and target")
                     raise RuntimeError(
                         f"no valid answer from {pid} on {port} - the port exists, so "
                         f"probably the programmer type does not match the hardware "
                         f"(e.g. stk500v2 for STK500v2-compatible ISP programmers, "
                         f"arduino for Arduino boards)")
+                info = self.pgms.get(lab)
+                if os.name == "nt" and pgm.conntype == ad.CONNTYPE_USB and info and \
+                        any(d.vid == info[4] and d.pid in info[5] for d in self.usb_devs):
+                    if info[4] == 0x04D8:
+                        # WinUSB sits on an interface of a composite device,
+                        # which avrdude's Windows libusb cannot open
+                        raise RuntimeError(
+                            f"cannot open {pid}: the Windows version cannot use Microchip "
+                            f"programmers with the MPLAB USB interface (PICkit 5, PICkit Basic, "
+                            f"...) yet - avrdude's Windows USB library does not support this "
+                            f"kind of device. Use a different programmer, or GUIDude on macOS "
+                            f"or Linux")
+                    raise RuntimeError(
+                        f"cannot open {pid}: it is connected, but either another program "
+                        f"is using it, or Windows has no suitable driver for it. USBasp, "
+                        f"USBtinyISP, AVRISP mkII, AVR Dragon and similar programmers need "
+                        f"the WinUSB driver: install it once with Zadig (see INSTALL.txt)")
                 raise RuntimeError(f"cannot open {pid} on port {port}")
             opened = True
             bc = self.bitclock.get().strip()
@@ -2558,10 +2685,26 @@ class App:
         else:
             self._sig_mismatch(sig, pgm)
 
+    def bootloader_selected(self):
+        """Is the selected programmer a bootloader (PM_SPM only)?"""
+        info = self.pgms.get(self.pgm_cb.get())
+        return bool(info and info[1] and not info[1] & ~ad.PM_SPM)
+
     def erase_chip(self):
+        if self.bootloader_selected():
+            messagebox.showinfo(APP_NAME, "A bootloader cannot erase the chip (it would erase "
+                                "itself). Programming the flash replaces the application "
+                                "anyway.\n\nTo erase everything, use an ISP, UPDI, ... "
+                                "programmer.")
+            return
         if not messagebox.askyesno(APP_NAME, f"Erase the entire {self.model.desc}?\n\n"
                                    "Flash, lock bits and (unless EESAVE is set) EEPROM "
-                                   "will be erased.", icon="warning"):
+                                   "will be erased.\n\n"
+                                   "⚠ This includes a bootloader, e.g. on Arduino boards: "
+                                   "afterwards the board can no longer be programmed through "
+                                   "its USB/serial port, only with an ISP, UPDI, ... "
+                                   "programmer (which can restore the bootloader).",
+                                   icon="warning", default="no"):
             return
         def job(pgm, p):
             if pgm.chip_erase(p) < 0:
@@ -2586,7 +2729,7 @@ class App:
         self.settings["userrow_verify"] = self.userrow.verify_after.get()
         try:
             self.sp.parent.mkdir(parents=True, exist_ok=True)
-            self.sp.write_text(json.dumps(self.settings, indent=2))
+            self.sp.write_text(json.dumps(self.settings, indent=2), encoding="utf-8")
         except OSError:
             pass
         ad.set_msg_callback(None)
@@ -2663,8 +2806,19 @@ def _mac_hide_menu_extras():
         pass
 
 
+def _attach_console():
+    """A windowed Windows exe has no stdout: print into the console of the
+    shell that started it (for --selftest)."""
+    if os.name != "nt" or sys.stdout is not None:
+        return
+    import ctypes
+    ok = ctypes.windll.kernel32.AttachConsole(-1)     # ATTACH_PARENT_PROCESS
+    sys.stdout = sys.stderr = open("CONOUT$" if ok else os.devnull, "w", errors="replace")
+
+
 def main():
     if "--selftest" in sys.argv:
+        _attach_console()
         sys.exit(selftest())
     _mac_hide_menu_extras()
     # className: WM_CLASS on X11 (taskbar grouping, window lookup)

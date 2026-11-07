@@ -1,0 +1,97 @@
+From a2fdc852f9b85aed644ff52e3e293e841895b767 Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Fri, 6 Nov 2026 22:30:01 +0100
+Subject: [PATCH 1/4] Reset serial state in init_cx() so serial programmers
+ work in later sessions
+
+The serial layer keeps per-session state in globals that some programmers
+change and nothing resets. The avrdude CLI runs one session per process, so
+it never notices; an application using libavrdude for several sessions (eg,
+the Python binding) does:
+
+ - Programmers such as jtag3, jtagmkII (with -P usb), stk500v2 (AVRISP mkII,
+   STK600), pickit5 and xbee switch the global serdev to a USB or other
+   transport in their open function. After a session with, say, an EDBG or
+   Snap debugger, every serial programmer (arduino, urclock, serialupdi,
+   stk500v2, jtag2 over RS-232, ...) fails, on Windows with "invalid -P COM9;
+   drop -P option or use -P usb...".
+
+ - urclock shortens serial_recv_timeout (to 500 ms) and serial_drain_timeout
+   (to about 20 ms) for the rest of its session. A following arduino session
+   on the same Optiboot board then fails with "programmer is not responding"
+   and "cannot obtain SW version".
+
+init_cx(pgm) is called at the start of each session to clear remnants of
+previous ones, so reset serdev to the serial transport and the two timeouts
+to their defaults there. The defaults become the macros SERIAL_RECV_TIMEOUT
+and SERIAL_DRAIN_TIMEOUT, used by ser_posix.c and ser_win32.c as well.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/avr.c        | 3 +++
+ src/libavrdude.h | 3 +++
+ src/ser_posix.c  | 4 ++--
+ src/ser_win32.c  | 4 ++--
+ 4 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/src/avr.c b/src/avr.c
+index a5d58986..51352898 100644
+--- a/src/avr.c
++++ b/src/avr.c
+@@ -606,6 +606,9 @@ double avr_timestamp() {
+ void init_cx(PROGRAMMER *pgm) {
+   if(pgm)
+     pgm->flag = 0;              // Clear out remnants of previous session(s)
++  serdev = &serial_serdev;      // Previous session may have switched to USB
++  serial_recv_timeout = SERIAL_RECV_TIMEOUT; // or changed the serial timeouts
++  serial_drain_timeout = SERIAL_DRAIN_TIMEOUT;
+   mmt_free(cx);
+   cx = mmt_malloc(sizeof *cx);  // Allocate and initialise context structure
+   (void) avr_ustimestamp();     // Base timestamps from program start
+diff --git a/src/libavrdude.h b/src/libavrdude.h
+index 421eba12..2f682729 100644
+--- a/src/libavrdude.h
++++ b/src/libavrdude.h
+@@ -859,6 +859,9 @@ const char *pinmask_to_str(const Pinmask *const pinmask);
+  * The target file will be selected at configure time.
+  */
+ 
++#define SERIAL_RECV_TIMEOUT  5000       // Default of serial_recv_timeout in ms
++#define SERIAL_DRAIN_TIMEOUT 250        // Default of serial_drain_timeout in ms
++
+ extern long serial_recv_timeout;        // Milliseconds
+ extern long serial_drain_timeout;       // Milliseconds
+ 
+diff --git a/src/ser_posix.c b/src/ser_posix.c
+index bfaccd60..ffb1eff7 100644
+--- a/src/ser_posix.c
++++ b/src/ser_posix.c
+@@ -46,8 +46,8 @@
+ #include "avrdude.h"
+ #include "libavrdude.h"
+ 
+-long serial_recv_timeout = 5000;        // ms
+-long serial_drain_timeout = 250;        // ms
++long serial_recv_timeout = SERIAL_RECV_TIMEOUT; // ms
++long serial_drain_timeout = SERIAL_DRAIN_TIMEOUT; // ms
+ 
+ struct baud_mapping {
+   long baud;
+diff --git a/src/ser_win32.c b/src/ser_win32.c
+index 88637c30..a1799668 100644
+--- a/src/ser_win32.c
++++ b/src/ser_win32.c
+@@ -33,8 +33,8 @@
+ #include "avrdude.h"
+ #include "libavrdude.h"
+ 
+-long serial_recv_timeout = 5000;        // ms
+-long serial_drain_timeout = 250;        // ms
++long serial_recv_timeout = SERIAL_RECV_TIMEOUT; // ms
++long serial_drain_timeout = SERIAL_DRAIN_TIMEOUT; // ms
+ 
+ #define W32SERBUFSIZE 1024
+ 
+-- 
+2.56.0
+

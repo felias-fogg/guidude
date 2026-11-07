@@ -8,6 +8,10 @@
 #
 # Usage: ./build_lib.sh [path/to/avrdude]     (default: ../avrdude)
 #
+# On Windows run it in Git Bash with Visual Studio (Build Tools) 2022, CMake,
+# SWIG and winflexbison installed: libusb, hidapi, libftdi and libelf are then
+# fetched by avrdude's cmake (USE_EXTERNAL_LIBS) and linked statically.
+#
 # Environment (all optional):
 #   PYTHON                     Python to build the module for (default: python3).
 #                              Must be the Python that runs GUIDude / PyInstaller.
@@ -16,14 +20,17 @@
 #   MACOSX_DEPLOYMENT_TARGET   oldest macOS version to support
 #   AVRDUDE_CMAKE_ARGS         extra arguments for cmake
 #
-# Requirements: cmake, swig >= 4, flex, bison, the Python headers, plus the
-# usual avrdude deps (libusb, hidapi, libftdi1; optionally libelf).
+# Requirements: cmake, swig >= 4, flex, bison, git, the Python headers, plus
+# the usual avrdude deps (libusb, hidapi, libftdi1; optionally libelf).
+#
+# The patches in avrdude-patches/ are applied to the avrdude source tree.
 
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 src=${1:-"$here/../avrdude"}
 src=$(cd "$src" && pwd)
 ostype=$(uname | tr '[A-Z]' '[a-z]')
+case $ostype in mingw*|msys*|cygwin*) ostype=windows ;; esac
 bdir="$src/build_$ostype"
 
 if [ ! -f "$src/CMakeLists.txt" ]; then
@@ -31,7 +38,38 @@ if [ ! -f "$src/CMakeLists.txt" ]; then
     exit 1
 fi
 
+# Fixes for libavrdude (submitted upstream) from avrdude-patches/:
+#  0001  reset the serial transport and timeouts per session (else serial
+#        programmers fail after a session with a USB debugger or urclock)
+#  0002  make partdesc/pgmid settable from Python (urclock needs partdesc)
+#  0003  Python binding: release the serial port when open() fails (else it
+#        stays busy, on Windows until GUIDude is restarted)
+#  0004  Python binding: do not link libpython (else the module works only with
+#        the Python it was built with); -D PYTHON_LIMITED_API=3.10 in
+#        AVRDUDE_CMAKE_ARGS builds one abi3 module for Python 3.10 and later
+# Each patch is applied unless the source already contains it.
+for p in "$here"/avrdude-patches/*.patch; do
+    [ -f "$p" ] || continue
+    if git -C "$src" apply --reverse --check "$p" 2>/dev/null; then
+        echo "== Already in avrdude source: $(basename "$p")"
+    elif git -C "$src" apply --check "$p" 2>/dev/null; then
+        git -C "$src" apply "$p"
+        echo "== Applied to avrdude source: $(basename "$p")"
+    else
+        echo "== WARNING: $(basename "$p") does not apply to $src - check whether" \
+             "this avrdude has an equivalent fix" >&2
+    fi
+done
+
 py=$(command -v "${PYTHON:-python3}")
+if [ "$ostype" = windows ]; then
+    # Git Bash would turn MSVC options like /MT into paths: switch that off
+    # and give cmake Windows paths ourselves
+    export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*"
+    py=$(cygpath -m "$py")
+    src=$(cygpath -m "$src")
+    bdir=$(cygpath -m "$bdir")
+fi
 prefix=${DEPS_PREFIX:-}
 if [ -z "$prefix" ] && [ "$ostype" = darwin ]; then
     prefix=$(brew --prefix 2>/dev/null || true)
@@ -51,10 +89,21 @@ if [ "$ostype" = darwin ]; then
         set -- "$@" -D "CMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
 fi
 
+if [ "$ostype" = windows ]; then
+    # as in avrdude's own MSVC build: static runtime, bundled USB libraries
+    set -- "$@" -A x64 -D USE_EXTERNAL_LIBS=1 \
+        -D HAVE_LIBREADLINE=HAVE_LIBREADLINE-NOTFOUND \
+        -D "CMAKE_C_FLAGS_RELWITHDEBINFO=/MT /GL /Zi /O2 /Ob1 /DNDEBUG" \
+        -D "CMAKE_CXX_FLAGS_RELWITHDEBINFO=/MT /GL /Zi /O2 /Ob1 /DNDEBUG" \
+        -D "CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO=/DEBUG /INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF" \
+        -D "CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO=/DEBUG /INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF" \
+        -D "CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO=/DEBUG /INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF"
+fi
+
 echo "== Building avrdude in $bdir for $py${prefix:+ (deps: $prefix)}"
 # shellcheck disable=SC2086
 cmake -S "$src" -B "$bdir" "$@" $AVRDUDE_CMAKE_ARGS
-cmake --build "$bdir" -j 8
+cmake --build "$bdir" -j 8 --config RelWithDebInfo
 
 b="$bdir/src"
 if [ ! -f "$b/swig_avrdude.py" ]; then
@@ -65,6 +114,11 @@ fi
 
 mkdir -p "$here/lib"
 rm -f "$here"/lib/_swig_avrdude*
-cp "$b"/_swig_avrdude*.so "$b"/swig_avrdude.py "$b"/avrdude.conf "$here/lib/"
+if [ "$ostype" = windows ]; then
+    cp "$b"/RelWithDebInfo/_swig_avrdude*.pyd "$here/lib/"    # multi-config generator
+else
+    cp "$b"/_swig_avrdude*.so "$here/lib/"
+fi
+cp "$b"/swig_avrdude.py "$b"/avrdude.conf "$here/lib/"
 echo "== Copied libavrdude Python module and avrdude.conf to $here/lib"
 ls -l "$here/lib"

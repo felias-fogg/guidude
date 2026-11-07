@@ -1,0 +1,50 @@
+From 2c1d12873258be0c22aff6d32512191530e529f8 Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Fri, 6 Nov 2026 22:30:01 +0100
+Subject: [PATCH 2/4] Make partdesc and pgmid settable from the Python binding
+
+partdesc and pgmid were immutable in the SWIG interface and stay "" in an
+application. Messages then read like "-c  extended options", and urclock
+cannot work with a bootloader that does not report its MCU (eg, optiboot):
+it needs partdesc and fails with "cannot identify MCU from partdesc".
+
+Make both writable with a varin typemap that stores the string via
+cache_string(): the default SWIG setter for const char * would leak a copy
+on each assignment (and warns about it).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/libavrdude.i | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/src/libavrdude.i b/src/libavrdude.i
+index 0ab2fae7..d2feb4ac 100644
+--- a/src/libavrdude.i
++++ b/src/libavrdude.i
+@@ -243,10 +243,21 @@ char * progname;
+ int verbose;
+ int quell_progress;
+ int ovsigck;
+-%immutable;
++// Part (-p) and programmer (-c) ids: messages use them, and some programmers
++// need partdesc (eg, urclock with a bootloader that does not tell the MCU), so
++// applications should set them for each session; cache_string() keeps one
++// copy of each distinct string instead of leaking a copy per assignment
++%typemap(varin) const char *partdesc, const char *pgmid {
++  if(!PyUnicode_Check($input)) {
++    SWIG_exception_fail(SWIG_TypeError, "in variable '$name' of type '$type'");
++  }
++  const char *utf8 = PyUnicode_AsUTF8AndSize($input, NULL); // Limited API (abi3) since 3.10
++  if(!utf8)
++    SWIG_fail;
++  $1 = cache_string(utf8);
++}
+ const char *partdesc;
+ const char *pgmid;
+-%mutable;
+ 
+ typedef void * LNODEID;
+ typedef void * LISTID;
+-- 
+2.56.0
+
