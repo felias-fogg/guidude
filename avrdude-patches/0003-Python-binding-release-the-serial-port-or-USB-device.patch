@@ -1,0 +1,82 @@
+From 806fa91904e8f4455d3cc29149f345ea335e1386 Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Fri, 6 Nov 2026 22:39:06 +0100
+Subject: [PATCH 3/5] Python binding: release the serial port or USB device
+ when open() fails
+
+Many programmers leave the serial port or the USB device open when their
+open() fails after opening it, eg, when a bootloader or debugger does not
+answer. The CLI exits then, but an application using the Python binding
+keeps running with the port still busy: a serial port on Windows, or a
+claimed USB interface on macOS (eg, JTAGICE mkII after a failed jtag2isp
+sync), cannot be opened again until the application is restarted.
+
+Mark the file descriptor invalid before open() and, should open() fail,
+close what it left open. The libusb and hidapi close functions now reset
+the handle, so devices a programmer closed itself are not closed twice.
+---
+ src/libavrdude.i | 20 ++++++++++++++++++++
+ src/usb_hidapi.c |  2 ++
+ src/usb_libusb.c |  2 ++
+ 3 files changed, 24 insertions(+)
+
+diff --git a/src/libavrdude.i b/src/libavrdude.i
+index d2feb4ac..b85cab60 100644
+--- a/src/libavrdude.i
++++ b/src/libavrdude.i
+@@ -538,6 +538,26 @@ typedef enum {
+   }
+ }
+ 
++// Many programmers (eg, arduino, urclock, stk500v2, jtag2isp) leave the
++// serial port or USB device open when their open() fails after opening it,
++// eg, as a bootloader or debugger does not answer. The avrdude CLI exits then,
++// but an application keeps running with the port still busy: a serial port on
++// Windows or a claimed USB interface on macOS cannot be opened again until the
++// application is restarted. So mark the file descriptor invalid before open()
++// and, should open() fail, close what open() has left open. USB close
++// functions reset the handle, so a device the programmer closed itself is not
++// closed twice.
++%feature("action") programmer::open {
++  arg1->fd.pfd = (void *) -1;   // INVALID_HANDLE_VALUE on Windows, ifd = -1 elsewhere
++  result = (int) arg1->open(arg2, (const char *) arg3);
++  if(result < 0 && arg1->fd.pfd != (void *) -1 && arg3) {
++    int usb = str_casestarts(arg3, "usb");
++    if(usb? serdev != &serial_serdev && arg1->fd.usb.handle: serdev == &serial_serdev)
++      serial_close(&arg1->fd);
++    arg1->fd.pfd = (void *) -1;
++  }
++}
++
+ %immutable;
+ typedef struct programmer {
+   LISTID id;
+diff --git a/src/usb_hidapi.c b/src/usb_hidapi.c
+index cae30979..8ab05c80 100644
+--- a/src/usb_hidapi.c
++++ b/src/usb_hidapi.c
+@@ -225,6 +225,8 @@ static int usbhid_open(const char *port, union pinfo pinfo, union filedescriptor
+ static void usbhid_close(union filedescriptor *fd) {
+   hid_device *udev = (hid_device *) fd->usb.handle;
+ 
++  fd->usb.handle = NULL;       // A second close does nothing
++
+   if(udev == NULL)
+     return;
+ 
+diff --git a/src/usb_libusb.c b/src/usb_libusb.c
+index a1d32032..6fa78281 100644
+--- a/src/usb_libusb.c
++++ b/src/usb_libusb.c
+@@ -243,6 +243,8 @@ none_matching:
+ static void usbdev_close(union filedescriptor *fd) {
+   usb_dev_handle *udev = (usb_dev_handle *) fd->usb.handle;
+ 
++  fd->usb.handle = NULL;       // A second close does nothing
++
+   if(udev == NULL)
+     return;
+ 
+-- 
+2.56.0
+

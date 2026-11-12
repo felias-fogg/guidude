@@ -1,7 +1,7 @@
-From 089dcc82047a5488fa1c98bc1f2e6ff94f6e9d27 Mon Sep 17 00:00:00 2001
+From 7db64105c4c77f4b829a1dfca7a02ebab3ddb5c3 Mon Sep 17 00:00:00 2001
 From: felias-fogg <nebel@hinterm-ziel.de>
 Date: Sat, 7 Nov 2026 11:52:06 +0100
-Subject: [PATCH 4/4] Python binding: do not link libpython, optional stable
+Subject: [PATCH 4/5] Python binding: do not link libpython, optional stable
  ABI (abi3)
 
 An extension module gets the Python C API symbols from the interpreter

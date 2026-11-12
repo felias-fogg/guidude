@@ -42,8 +42,9 @@ fi
 #  0001  reset the serial transport and timeouts per session (else serial
 #        programmers fail after a session with a USB debugger or urclock)
 #  0002  make partdesc/pgmid settable from Python (urclock needs partdesc)
-#  0003  Python binding: release the serial port when open() fails (else it
-#        stays busy, on Windows until GUIDude is restarted)
+#  0003  Python binding: release the serial port or USB device when open()
+#        fails (else it stays busy until GUIDude is restarted: serial ports on
+#        Windows, USB devices such as the JTAGICE mkII on macOS)
 #  0004  Python binding: do not link libpython (else the module works only with
 #        the Python it was built with); -D PYTHON_LIMITED_API=3.10 in
 #        AVRDUDE_CMAKE_ARGS builds one abi3 module for Python 3.10 and later

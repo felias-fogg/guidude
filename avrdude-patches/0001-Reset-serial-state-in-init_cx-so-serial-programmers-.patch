@@ -1,7 +1,7 @@
-From a2fdc852f9b85aed644ff52e3e293e841895b767 Mon Sep 17 00:00:00 2001
+From bb375c69c2d597211930afbd4cb75ed23587d0da Mon Sep 17 00:00:00 2001
 From: felias-fogg <nebel@hinterm-ziel.de>
 Date: Fri, 6 Nov 2026 22:30:01 +0100
-Subject: [PATCH 1/4] Reset serial state in init_cx() so serial programmers
+Subject: [PATCH 1/5] Reset serial state in init_cx() so serial programmers
  work in later sessions
 
 The serial layer keeps per-session state in globals that some programmers

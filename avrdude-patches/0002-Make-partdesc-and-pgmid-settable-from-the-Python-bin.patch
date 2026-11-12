@@ -1,7 +1,7 @@
-From 2c1d12873258be0c22aff6d32512191530e529f8 Mon Sep 17 00:00:00 2001
+From 4503edfecc9d87acf1edacfed75ee1f9f250f6df Mon Sep 17 00:00:00 2001
 From: felias-fogg <nebel@hinterm-ziel.de>
 Date: Fri, 6 Nov 2026 22:30:01 +0100
-Subject: [PATCH 2/4] Make partdesc and pgmid settable from the Python binding
+Subject: [PATCH 2/5] Make partdesc and pgmid settable from the Python binding
 
 partdesc and pgmid were immutable in the SWIG interface and stay "" in an
 application. Messages then read like "-c  extended options", and urclock

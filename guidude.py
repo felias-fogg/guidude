@@ -2593,6 +2593,20 @@ class App:
             rc = pgm.open(port)
             errs, self._errs = " ".join(self._errs), None
             if rc < 0:
+                if "NO_TARGET_POWER" in errs or "no target power" in errs:
+                    plug = ""
+                    both = ad.PM_ISP | ad.PM_JTAG
+                    if p.prog_modes & both == both and pgm.prog_modes & both:
+                        use, other = ("ISP", "JTAG") if pgm.prog_modes & ad.PM_ISP \
+                            else ("JTAG", "ISP")
+                        plug = (f". {p.desc} has both ISP and JTAG: make sure that the "
+                                f"{use} plug of the programmer is connected, not the {other} "
+                                f"plug")
+                    raise RuntimeError(
+                        f"{pid} on {port} answered, but does not see the target's supply "
+                        f"voltage. Power the target and check the cable: the programmer "
+                        f"senses the voltage on the VTref/VCC pin of the ISP or JTAG "
+                        f"connector{plug}")
                 # os.path.exists() is True on Windows only for COM1..COM9
                 port_ok = port.upper() in list_serial_ports() if os.name == "nt" \
                     else os.path.exists(port)

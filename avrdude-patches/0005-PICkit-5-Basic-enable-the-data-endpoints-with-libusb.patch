@@ -1,8 +1,8 @@
-From 767474e01c0e3a1a25f07dea414a1e7112824a48 Mon Sep 17 00:00:00 2001
+From 0d919bc88c8c4a37dda0e6798cd159f4300dea63 Mon Sep 17 00:00:00 2001
 From: felias-fogg <nebel@hinterm-ziel.de>
 Date: Sat, 7 Nov 2026 15:06:07 +0100
-Subject: [PATCH] PICkit 5/Basic: enable the data endpoints with libusb-win32
- (MSVC builds)
+Subject: [PATCH 5/5] PICkit 5/Basic: enable the data endpoints with
+ libusb-win32 (MSVC builds)
 
 pickit5.c includes <usb.h> (HAVE_USB_H) or, in MSVC builds on Windows,
 <lusb0_usb.h> (HAVE_LUSB0_USB_H), but the block with usbdev_bulk_recv(),
