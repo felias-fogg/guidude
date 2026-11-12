@@ -29,7 +29,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GUIDude"
-APP_VERSION = "0.10.1"
+APP_VERSION = "0.10.2"
 
 
 # ---------------------------------------------------------------------------
