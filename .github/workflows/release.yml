@@ -281,7 +281,7 @@ jobs:
           | `GUIDude-*-macOS-arm64.zip` | Mac with Apple Silicon, macOS 11 or later |
           | `GUIDude-*-macOS-x86_64.zip` | Mac with Intel processor, macOS 10.13 or later |
           | `GUIDude-*-linux-x86_64.tar.gz` | Linux PC with glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or later) |
-          | `GUIDude-*-linux-aarch64.tar.gz` | 64-bit ARM Linux, e.g. Raspberry Pi OS 64-bit (bookworm or later) |
+          | `GUIDude-*-linux-aarch64.tar.gz` | 64-bit ARM Linux with glibc 2.35+, e.g. Raspberry Pi OS 64-bit (bookworm or later), Ubuntu 22.04 or later |
           | `GUIDude-*-windows-x64.zip` | Windows 10 or 11, 64-bit (x64) |
           EOF
           if ! gh release view "$GITHUB_REF_NAME" -R "$REPO" > /dev/null 2>&1; then
