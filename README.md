@@ -74,7 +74,7 @@ GUIDude is tested with avrdude 8.3. To build exactly that version, run `git -C .
 
 On Windows, run this in Git Bash.
 
-`build_lib.sh` first applies the patches in `avrdude-patches/` to the avrdude source tree, unless they are already in it. They fix problems that only show up when libavrdude is used for several sessions in one program, and they make the PICkit 5 and PICkit Basic work in Windows (MSVC) builds. The patches have been submitted to the avrdude project. On Windows, the patch in `avrdude-patches/libusb/` is applied to avrdude's Windows USB library (`avrdudes/libusb`), which the build then uses.
+`build_lib.sh` first applies the patches in `avrdude-patches/` to the avrdude source tree, unless they are already in it. They fix problems that only show up when libavrdude is used for several sessions in one program, they make the PICkit 5 and PICkit Basic work in Windows (MSVC) builds, and they let GUIDude cancel a running operation. The patches have been or will be submitted to the avrdude project. On Windows, the patch in `avrdude-patches/libusb/` is applied to avrdude's Windows USB library (`avrdudes/libusb`), which the build then uses.
 
 Optional settings, as environment variables:
 

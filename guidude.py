@@ -29,7 +29,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "GUIDude"
-APP_VERSION = "0.10.2"
+APP_VERSION = "0.11.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1788,6 +1788,12 @@ class App:
         self.btn_erase = ttk.Button(sbar, text="Erase Chip…", command=self.erase_chip)
         self.btn_erase.pack(side="left")
         self.action_buttons += [self.btn_erase, self.btn_detect]
+        self._cancelled = False
+        self.btn_cancel = None
+        if hasattr(ad, "avr_cancel"):      # avrdude-patches/0006
+            self.btn_cancel = ttk.Button(sbar, text="Cancel", command=self.cancel,
+                                         state="disabled")
+            self.btn_cancel.pack(side="left", padx=(6, 0))
         self.status = ttk.Label(sbar, text="Ready")
         self.status.pack(side="left", padx=12)
         self.progress = ttk.Progressbar(sbar, length=200, maximum=100)
@@ -2554,6 +2560,8 @@ class App:
         for c in (self.dev_cb, self.pgm_cb, self.port_cb):
             c.configure(state=st)
         self.root.configure(cursor="watch" if busy else "")
+        if self.btn_cancel is not None:
+            self.btn_cancel.configure(state="normal" if busy else "disabled")
         if not busy:
             # editors may have disabled buttons for parts without fuses
             for ed in (self.fuses, self.locks):
@@ -2561,11 +2569,23 @@ class App:
                     for b in (ed.btn_read, ed.btn_verify, ed.btn_prog, ed.btn_def):
                         b.configure(state="disabled")
 
+    def cancel(self):
+        """Cancel button: libavrdude's serial I/O fails from now on, so the
+        running session ends soon. The click is seen whenever libavrdude
+        reports something (see _pump), at the latest after a few seconds."""
+        if not self.busy or self._cancelled:
+            return
+        self._cancelled = True
+        ad.avr_cancel(1)
+        self.btn_cancel.configure(state="disabled")
+        self.log("Cancelling …", tag="warning")
+        self.status.configure(text="Cancelling …")
+
     def session(self, job, what, check_sig=True, part=None, quiet=False):
         """Open the programmer, run job(pgm, part), close. Returns job's result
         or None on error (already reported). ``part`` overrides the selected
         device (used for probing); ``quiet`` reports failures only in the log.
-        After a failure, self.fail_stage is "open", "init" or "job"."""
+        After a failure, self.fail_stage is "open", "init", "job" or "cancelled"."""
         self.fail_stage = None
         if self.busy:
             return None
@@ -2586,6 +2606,7 @@ class App:
                 return None
         self.settings["port"] = port
         self.settings["bitclock"] = self.bitclock.get().strip()
+        self._cancelled = False
         self._set_busy(True)
         self.progress["value"] = 0
         self.status.configure(text=f"{what}…")
@@ -2595,6 +2616,8 @@ class App:
         self.fail_stage = "open"
         try:
             ad.init_cx(pgm)
+            if self._cancelled:           # clicked while the session started
+                ad.avr_cancel(1)
             # avrdude's -p and -c: used in messages, and urclock needs the
             # part unless the bootloader reports it (read-only in libavrdude
             # without avrdude-patches/0002)
@@ -2699,6 +2722,13 @@ class App:
             self.status.configure(text=f"{what}: done")
             return result
         except RuntimeError as e:
+            if self._cancelled:
+                note = " - a memory that was being written may be incomplete" \
+                    if self.fail_stage == "job" else ""
+                self.fail_stage = "cancelled"
+                self.log(f"{what} cancelled{note}", tag="warning")
+                self.status.configure(text=f"{what} cancelled")
+                return None
             if quiet:
                 self.log(f"{what} with {p.desc} settings: {str(e).split(' - ')[0]}",
                          tag="notice")
@@ -2710,6 +2740,8 @@ class App:
         finally:
             try:
                 if opened:
+                    if self._cancelled:
+                        ad.avr_cancel(0)  # so that closing can talk to it
                     pgm.disable()
                     pgm.close()
                 pgm.teardown()

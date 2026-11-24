@@ -1,0 +1,103 @@
+From 2a041f531e33fcdb35e150b8e957b418882ee2ef Mon Sep 17 00:00:00 2001
+From: felias-fogg <nebel@hinterm-ziel.de>
+Date: Tue, 24 Nov 2026 18:03:56 +0100
+Subject: [PATCH 6/6] Add avr_cancel() so that an application can stop a
+ running operation
+
+An application using libavrdude (eg, a GUI) cannot interrupt a long-running
+operation: avrdude's CLI has Ctrl-C, but a library call only returns when it
+is done. Some take long when the hardware does not answer, eg, arduino_as_isp
+on a port without that programmer: 10 sync attempts with a 5 s timeout each.
+
+avr_cancel(1), typically called from the message or progress callback while
+the operation is running, makes serial_send(), serial_recv() and
+serial_drain() fail at once, so sync loops and memory transfers end soon.
+This covers all programmers that use the serdev layer: serial ports, and
+USB/HID devices through usb_libusb.c and usb_hidapi.c; programmers that call
+libusb directly (usbasp, usbtiny, ...) do not see the request. avr_cancel(0)
+clears it, eg, before the application closes the programmer, and init_cx()
+does so for each new session as the flag lives in the context.
+
+Measured with arduino_as_isp on a line that never answers: open() fails
+after 5.8 s instead of about a minute when avr_cancel(1) is called at the
+first "not in sync" warning.
+---
+ src/avr.c        | 12 ++++++++++++
+ src/libavrdude.h | 11 ++++++++---
+ src/libavrdude.i |  1 +
+ 3 files changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/src/avr.c b/src/avr.c
+index 51352898..10a53b83 100644
+--- a/src/avr.c
++++ b/src/avr.c
+@@ -614,6 +614,18 @@ void init_cx(PROGRAMMER *pgm) {
+   (void) avr_ustimestamp();     // Base timestamps from program start
+ }
+ 
++/*
++ * Ask the running operation to stop, eg, from a callback of an application:
++ * serial_send(), serial_recv() and serial_drain() fail at once, so a sync loop
++ * or a memory transfer ends soon. avr_cancel(0) or init_cx() clears the
++ * request, eg, so that closing the programmer can talk to it again.
++ * Programmers that use libusb directly (usbasp, usbtiny, ...) do not see it.
++ */
++void avr_cancel(int on) {
++  if(cx)
++    cx->cancel = !!on;
++}
++
+ int avr_read_byte_silent(const PROGRAMMER *pgm, const AVRPART *p, const AVRMEM *mem,
+   unsigned long addr, unsigned char *datap) {
+ 
+diff --git a/src/libavrdude.h b/src/libavrdude.h
+index 2f682729..fbf21b62 100644
+--- a/src/libavrdude.h
++++ b/src/libavrdude.h
+@@ -945,9 +945,10 @@ extern struct serial_device usbhid_serdev;
+ #define serial_setparams (serdev->setparams)
+ #define serial_close (serdev->close)
+ #define serial_rawclose (serdev->rawclose)
+-#define serial_send (serdev->send)
+-#define serial_recv (serdev->recv)
+-#define serial_drain (serdev->drain)
++// Fail at once after avr_cancel(1), so that a long operation ends soon
++#define serial_send(fd, buf, len) (cx && cx->cancel? -1: serdev->send(fd, buf, len))
++#define serial_recv(fd, buf, len) (cx && cx->cancel? -1: serdev->recv(fd, buf, len))
++#define serial_drain(fd, display) (cx && cx->cancel? -1: serdev->drain(fd, display))
+ #define serial_set_dtr_rts (serdev->set_dtr_rts)
+ 
+ // See avrcache.c
+@@ -1199,6 +1200,7 @@ extern "C" {
+   uint64_t avr_mstimestamp(void);
+   double avr_timestamp(void);
+   void init_cx(PROGRAMMER *pgm);
++  void avr_cancel(int on);
+   int avr_read_byte_silent(const PROGRAMMER *pgm, const AVRPART *p, const AVRMEM *mem,
+     unsigned long addr, unsigned char *datap);
+   int avr_bitmask_data(const PROGRAMMER *pgm, const AVRPART *p, const AVRMEM *mem,
+@@ -1974,6 +1976,9 @@ typedef struct {
+ 
+   // Global variable indicating usb access problems
+   int usb_access_error;
++
++  // Set by avr_cancel(1): serial_send(), serial_recv() and serial_drain() fail
++  int cancel;
+ } libavrdude_context;
+ 
+ extern libavrdude_context *cx;
+diff --git a/src/libavrdude.i b/src/libavrdude.i
+index b85cab60..131f3b19 100644
+--- a/src/libavrdude.i
++++ b/src/libavrdude.i
+@@ -617,6 +617,7 @@ typedef struct programmer {
+ %clear struct programmer *pgm;
+ 
+ void init_cx(PROGRAMMER *pgm = NULL);
++void avr_cancel(int on);
+ 
+ // Config file handling
+ int init_config(void);
+-- 
+2.56.0
+

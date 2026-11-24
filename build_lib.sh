@@ -49,6 +49,8 @@ fi
 #        the Python it was built with); -D PYTHON_LIMITED_API=3.10 in
 #        AVRDUDE_CMAKE_ARGS builds one abi3 module for Python 3.10 and later
 #  0005  PICkit 5/Basic: real data transfers in MSVC builds (were stubs)
+#  0006  avr_cancel(): serial I/O fails at once, so the Cancel button can stop
+#        a long operation (e.g. 10 sync attempts x 5 s on the wrong port)
 # On Windows, avrdude-patches/libusb/ holds fixes for avrdude's libusb-win32
 # (avrdudes/libusb, fetched by cmake): it is cloned at the commit avrdude
 # pins, patched and used instead (PICkit 5/Basic: WinUSB on an interface).
