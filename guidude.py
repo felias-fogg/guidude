@@ -600,6 +600,17 @@ def x11_look(root, st):
 FRAME_GREY = "#c4c4c4"      # thin frames on macOS/Windows (lighter than a solid border)
 
 
+def tcl_cmd(widget, *args):
+    """A widget command as a plain Tcl command, e.g. for yscrollcommand.
+
+    A bound method (sb.set) would be registered as a Python callback, which
+    Tk calls from its idle redraw. On macOS, hidapi runs the main run loop
+    while it opens a device inside a libavrdude call, and Tk then redraws
+    and runs idle handlers from drawRect: a Python callback there aborts
+    Python ("PyEval_RestoreThread" fatal error)."""
+    return (str(widget),) + args
+
+
 def frame_border_opts():
     """A thin light frame for a tk.Frame around a pane (fuse list)."""
     c = FRAME_GREY if sys.platform in ("darwin", "win32") else ADW["border"]
@@ -745,7 +756,7 @@ class ScrollFrame(ttk.Frame):
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(
             self._win, width=e.width))
         # scroll in pixels so that wheel and trackpad deltas map directly
-        self.canvas.configure(yscrollcommand=self.vsb.set, yscrollincrement=1)
+        self.canvas.configure(yscrollcommand=tcl_cmd(self.vsb, "set"), yscrollincrement=1)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.vsb.pack(side="right", fill="y")
         self.bind_tree()
@@ -1254,7 +1265,7 @@ class MemoryPanel(ttk.Frame):
             self.hex = tk.Text(hf, height=6, width=1, wrap="none", font=app.mono,
                                state="disabled", **text_frame_opts())
             hsb = ttk.Scrollbar(hf, command=self.hex.yview)
-            self.hex.configure(yscrollcommand=hsb.set)
+            self.hex.configure(yscrollcommand=tcl_cmd(hsb, "set"))
             self.hex.pack(side="left", fill="both", expand=True)
             hsb.pack(side="right", fill="y")
         self.b_read.pack(side="left")
@@ -1756,7 +1767,7 @@ class App:
         self.logtxt = tk.Text(lf, height=5, wrap="word", font=self.mono,
                               state="disabled", **text_frame_opts())
         sb = ttk.Scrollbar(lf, command=self.logtxt.yview)
-        self.logtxt.configure(yscrollcommand=sb.set)
+        self.logtxt.configure(yscrollcommand=tcl_cmd(sb, "set"))
         self.logtxt.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
         for tag, col in (("error", "#d02020"), ("warning", "#c07000"), ("ok", "#109030"),
@@ -2521,13 +2532,18 @@ class App:
     def _pump(self):
         # Keep the window alive during long blocking libavrdude calls.
         # All action buttons are disabled while busy, so re-entrancy is harmless.
+        # Leave no idle handler pending when control goes back into libavrdude:
+        # on macOS, hidapi runs the main run loop inside the call, Tk's drawRect
+        # then runs idle handlers, and one that calls Python aborts Python.
         now = time.monotonic()
-        if now - self._last_update > 0.05:
-            self._last_update = now
-            try:
+        try:
+            if now - self._last_update > 0.05:
+                self._last_update = now
                 self.root.update()
-            except tk.TclError:
-                pass
+            else:
+                self.root.update_idletasks()
+        except tk.TclError:
+            pass
 
     # -- programmer sessions -------------------------------------------------------
     def _set_busy(self, busy):
@@ -2590,6 +2606,7 @@ class App:
             pgm.initpgm()
             pgm.setup()
             self._errs = []
+            self.root.update_idletasks()        # see _pump()
             rc = pgm.open(port)
             errs, self._errs = " ".join(self._errs), None
             if rc < 0:
